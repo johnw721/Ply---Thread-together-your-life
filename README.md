@@ -7,9 +7,11 @@ impossible to hold and hard to ignore.
 *A ply is a strand twisted into a thread, a single move in a game tree, and the verb
 for working at something steadily. All three are the app.*
 
-Single file. Open `index.html` in a browser. No build step, no server, no network,
-no dependencies. Data lives in `localStorage` under `ply.v1`; Export/Import JSON is
-in the `⋮` menu. Data saved when this was called Thread is adopted on first load and
+Single file. Open `index.html` in a browser. No build step, no server, no
+dependencies. Data lives in `localStorage` under `ply.v1`; Export/Import JSON is
+in the `⋮` menu. It reaches the network in exactly one case — if you connect Google
+Calendar (see below), which is opt-in and which the `file://` build can't do
+anyway. Data saved when this was called Thread is adopted on first load and
 the old key is left in place as a backup rather than deleted.
 
 Demo data loads on first run — all nine goal types, a blocked thread, a pending
@@ -169,9 +171,10 @@ here because the lists are short and arrows work with a keyboard and on a phone.
 
 ## The calendar
 
-Everything reads through the `CAL` adapter (`list` / `on` / `anchor` / `loadOn` /
-`loadWeek`). No view or engine function touches `DB.events` directly, which is the
-seam a Google Calendar provider drops into later.
+Everything reads through the `CAL` adapter (`list` / `on` / `anchor` / `unanchor` /
+`loadOn` / `loadWeek`). No view or engine function touches `DB.events` directly,
+which is the seam the Google Calendar provider dropped into — see **Google Calendar**
+below. `local` is still the default provider, and it is also the offline cache.
 
 **Cyclical goals re-book themselves.** Complete an anchored habit / maintenance /
 threshold step and the successor lands in the same slot, one cadence later. Without
@@ -190,6 +193,151 @@ ties. There's a configurable budget now — 4h by default, all-day items exempt.
 and Week show it as a bar, `suggestDay()` fills the first day with room instead of
 the emptiest one, the check-in shows free time under each suggested date, and
 "Schedule all as suggested" names any day it just pushed over.
+
+## Google Calendar
+
+The `CAL` seam now has a second provider. **Local is still the default, and it is
+also the offline cache** — nothing about Ply changes until you connect something.
+
+The shape of the integration is the one decision the rest follows from: **Google is
+a sync source into `DB.events`, not a read-through.** Every remote event lands as a
+mirror row carrying its remote id, so `eventsOn()` still answers every read,
+`loadOn()` still counts the day, and undo, cross-tab adoption and the whole offline
+story keep working with no second code path. A read-through provider would have
+needed one through all three.
+
+**Your calendar is now part of the day's ceiling.** `loadOn()` counts remote timed
+events, so the load bars, `suggestDay()` and the check-in's free-time readouts
+describe the day you actually have rather than the part of it Ply knows about. This
+is the point of the feature as much as the writing is: a 4h budget means nothing if
+three hours of meetings are invisible.
+
+**Yours versus everyone else's.** An event Ply created carries
+`extendedProperties.private.plyStepId`. Those are editable here and move when you
+drag them. Everything else is read-only in Ply — it renders, it counts against the
+day, and opening it offers a link out rather than fields that would be overwritten
+by the next pull. Ply has no business rewriting a meeting it didn't create.
+
+**Re-anchoring moves the event, it doesn't replace it.** Dragging a step to a new
+slot `PATCH`es the same Google event, so it keeps its id, its reminders and anyone
+it was shared with. A deliberate local move also *wins* over whatever time the
+remote is holding — the conflict rule below is about changes Ply didn't make, and a
+drag you just performed isn't one.
+
+**Conflicts: remote wins for time and title, Ply wins for the step link.** A pull
+only overwrites a row's time when the remote's `updated` is newer than Ply's last
+write to it, and never while a local write is still queued. If someone strips the
+private property off one of our events, Ply keeps the link and queues a patch to
+put it back.
+
+**A step deleted in Google is not silently unanchored.** The row is tombstoned and
+keeps its link, which raises the existing "next step not on the calendar" signal
+with wording that says where it went. Dropping a commitment has to be something you
+did, not something the sync did to you while you weren't looking. It stops counting
+against the day immediately, and re-scheduling that step creates a fresh event
+rather than patching a corpse.
+
+**Recurring events arrive expanded.** `singleEvents=true`, so each instance is its
+own mirror row with `recur:null` and `occurrenceOf()` never sees one. Ply's own
+`recur:{every,until}` masters are untouched and still expand at read time. A
+multi-day all-day event is mirrored on its first day only — Ply's model has no
+multi-day event, and all-day items are capacity-exempt anyway.
+
+**Every write queues.** `CAL.writable` says Ply *may* schedule; `CAL.online` is the
+separate question of whether it can be delivered. So `anchor()` returns its local
+event synchronously, always, and the remote call is a job in `DB.meta.gqueue` that
+replays in order on reconnect. Repeated edits to one row coalesce to one job whose
+payload is read at flush time, and a create cancelled before it flushes never
+reaches the network at all. The ribbon shows one chip — *n changes waiting to sync*
+— which deliberately can't be snoozed: a pending write is a fact about the app, not
+a nag about a thread.
+
+**Sync: on load, on focus, and every five minutes.** Incremental by `syncToken`.
+Two API facts shaped how:
+
+- **`syncToken` cannot be combined with `timeMin`/`timeMax`** (nor `q`, `orderBy`,
+  `updatedMin` or `privateExtendedProperty`). So the token-minting sync is
+  *unbounded* and the window — 30 days back, 180 forward — is applied locally as
+  rows are stored, which is Google's own "filter client-side" guidance. One-time
+  cost on connect; every pull after that is tiny. A calendar deep enough to exceed
+  20 pages stops there and falls back to full window pulls. A `410` drops the token
+  and re-syncs from scratch.
+- **The browser token model has no refresh tokens**, and a silent renewal can be
+  eaten by a popup blocker because there's no user gesture behind it. A background
+  poll that meets a 401 retries once silently, then parks in `stale`, keeps queueing
+  writes, and puts a click-to-reconnect chip in the ribbon. It doesn't pretend it
+  can recover on its own.
+
+**One tab syncs.** A `localStorage` lease with a 90-second expiry elects it. Without
+that, every tab polls, and each poll's `save()` fires `storage` in the others, whose
+`adoptExternal()` throws their undo stacks away — a five-minute timer that silently
+deletes your undo history. Relatedly, the sync cursor lives under its own key
+(`ply.gcal.sync`) rather than in `DB`: it's per-browser position, not your data, so
+a poll that finds nothing changed writes nothing at all.
+
+**What isn't stored.** The access token is in memory only and never touches
+`localStorage` — there's a test that greps every key to prove it. Foreign events are
+stripped from Export JSON: they're a cache that re-derives on the next sync, and a
+file you mail yourself shouldn't carry your work calendar inside it. Ply's own
+events export normally, since they carry the step link.
+
+**Disconnecting keeps your schedule.** Your own events stay, as ordinary local
+events with their step links intact; only the cached copy of everyone else's
+calendar goes, along with the queue and the token.
+
+Not in scope: multiple calendars, attendees, Google Tasks, and pushing lead/lag
+shadows (that arrives with the hidden-cost feature).
+
+### Setting up the OAuth client id
+
+Ply has no server, so this is a **Web application** client with no client secret.
+The client id itself is public by design — it ships in the page either way — so
+Settings stores it in `DB.meta.google.clientId` without pretending otherwise.
+
+1. In the Google Cloud console, create or pick a project and **enable the Google
+   Calendar API**.
+2. Configure the OAuth consent screen. While it's in *Testing* you must add your own
+   address under **Test users**, or consent fails for you specifically. Scopes:
+   `.../auth/calendar.events` and `email`.
+3. **Credentials → Create credentials → OAuth client ID → Web application.**
+4. Under **Authorized JavaScript origins**, add `http://localhost:5173`.
+5. Leave **Authorized redirect URIs** empty. The GIS token client uses the
+   JavaScript origin, not a redirect.
+6. Paste the id into `⋮ → Settings → Google Calendar`, or set it at build time (see
+   below), then **Connect Google Calendar**.
+
+**Why `http://localhost:5173` and nothing else, for now.** Google matches the
+browser's *origin*, and a page opened from disk has origin `null` — `file://` is not
+a registerable value and never will be. So the offline single-file build **cannot
+authenticate**, and Settings says so plainly rather than letting the popup die with
+a `redirect_uri_mismatch`. Ply itself still works there in full; it just stays on the
+local provider. `http://localhost` is the one non-https origin Google accepts, and
+`5173` is Vite's dev-server port, so `npm run dev` is the supported way to use Google
+Calendar today. When there's a deployed origin, add it to the same client
+(`https://<you>.github.io` for Pages — origin only, no path) and nothing else
+changes.
+
+**Where the id comes from**, in order: the Settings field, then a build-time value,
+then nothing. The build-time value is either a Vite `define` for
+`__PLY_GOOGLE_CLIENT_ID__`:
+
+```js
+// vite.config.js
+export default {
+  define: {
+    __PLY_GOOGLE_CLIENT_ID__: JSON.stringify(process.env.VITE_GOOGLE_CLIENT_ID || '')
+  }
+};
+```
+
+…or, with no build step at all, a meta tag in `index.html`:
+
+```html
+<meta name="ply-google-client-id" content="123-abc.apps.googleusercontent.com">
+```
+
+Neither is required: pasting the id into Settings once is enough, and it persists
+with the rest of your data.
 
 ## The four views
 
@@ -417,7 +565,7 @@ state and re-renders — keeping this tab's zoom and cursor, and clearing the un
 stack, whose snapshots describe a history that no longer exists. If a modal or the
 check-in is open the update is deferred until it closes.
 
-**Schema and migration.** Exports carry a `schema` number (currently 5). Everything
+**Schema and migration.** Exports carry a `schema` number (currently 7). Everything
 entering the app — from `localStorage` or an imported file — goes through
 `migrate()`, which backfills fields added since, coerces malformed structures rather
 than trusting them, and refuses a file written by a newer build instead of
@@ -425,11 +573,18 @@ half-loading it. Unreadable stored data falls back to a clean DB.
 
 ## Decisions taken
 
-1. **Google Calendar read-only or read/write? → read/write.** Deferred, but the seam
-   is built and `CAL.writable` already gates whether `anchor()` may push remotely.
+1. **Google Calendar read-only or read/write? → read/write**, and now built.
    Read-only breaks rule 3: if the app can't put the next step on the calendar, "if it
    isn't scheduled it isn't real" becomes a manual copy step, which is the friction
-   that kills it.
+   that kills it. `CAL.writable` turned out to mean "Ply may schedule" rather than
+   "the network is up" — with a queue behind it, every write is accepted and
+   `CAL.online` answers the other question.
+6. **Sync source or read-through? → sync source.** Remote events are mirrored into
+   `DB.events` rather than fetched per view. It costs a cache to keep honest and buys
+   offline capacity maths, working undo, and no second path through `eventsOn()`.
+7. **Foreign events in the export? → no.** They're mirrored locally so the day's
+   ceiling is right offline, and stripped from Export JSON so a backup you share
+   isn't a copy of your work calendar. Ply's own events export normally.
 2. **Threshold: auto-detect or gate? → auto-detect**, with a `confirm-type` question
    queued into the check-in. Capture stays fast and the borderline call gets reviewed
    later — and now only *once*, because the answer is kept and reused on phrases of
@@ -448,7 +603,13 @@ half-loading it. Unreadable stored data falls back to a clean DB.
   Day matrix, Week grid, budget rows and check-in cards were not part of that pass.
 - **Drag hit-testing is untested.** jsdom has no layout, so `elementFromPoint` is
   stubbed in the suites — the handler logic is covered, the geometry isn't.
-- Google Calendar is a seam, not an integration.
+- Google Calendar sync has never run against the real API — the suite stubs `fetch`
+  and GIS, which proves Ply's rules and nothing about Google's behaviour. First
+  contact with a live calendar is still owed.
+- Google sync needs an `http://localhost` or https origin, so it is off in the
+  `file://` build. See **Google Calendar** above for why.
+- A multi-day all-day Google event shows on its first day only.
+- Multiple calendars aren't supported: one calendar id, `primary` by default.
 - The follow-through log is minimal: planned vs done per goal over 28 days, plus a
   streak.
 - Pipeline stages are functional but plain — each entry is a parallel thread carrying
@@ -464,7 +625,22 @@ half-loading it. Unreadable stored data falls back to a clean DB.
 
 ## Verification
 
-`node` + `jsdom`, seven suites, no page errors.
+`npm test` — `vitest` + `jsdom`, driving the real `index.html` through
+`test/harness.js`, no page errors.
+
+**The table below describes the original suites, which are not currently in the
+repo.** They were written against a build that predates `git init` here and have to
+be rebuilt from these descriptions; `test/harness.js` and `test/bridge.js` are the
+rig that will run them, and they boot either the monolith or a migrated `src/` tree
+through one identical API so the same files can prove parity across the migration.
+What *is* in the repo today:
+
+| suite | assertions | covers |
+|---|---|---|
+| google provider | 210 | auth state (no client id, connect, scope, the token never reaching `localStorage`, one silent renewal then `stale`, offline vs expired, revoke-and-keep-your-schedule); mapping timed, all-day and pre-expanded recurring events; merged reads; foreign events read-only; a hostile remote title escaped everywhere; create, patch-in-place re-anchor, delete, and a create cancelled before it flushed; unbounded token-minting sync with no `timeMin`, incremental replay, multi-page paging, `410` recovery, window pruning, the leader lease; remote-wins-on-time, Ply-wins-on-step-link, tombstone instead of silent unanchor; the offline queue holding, coalescing, replaying in order and surviving a reload; remote events counted against the day budget and `suggestDay()`; schema 6→7 migration and coercion; export stripping the foreign cache; and the Settings panel's three states |
+| local provider (regression) | 29 | the local path through everything the provider touched: still the default with no network reached, anchor/re-anchor/unanchor purely local, the plain unscheduled wording, one anchor as one undo step, repeats still expanding at read time, and a local export carrying every event |
+
+### The original suites
 
 | suite | assertions | covers |
 |---|---|---|
