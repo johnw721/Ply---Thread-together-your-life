@@ -296,6 +296,13 @@ main{flex:1;overflow:auto;position:relative}
   font-size:11px;padding:3px 6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;color:#cfe0ff}
 .track .ev:hover{background:#33507a}
 .track .ev.step{background:#173427;border-color:#2f6a51;color:#a8e6c9}
+/* foreign Google events: present, counted against the day, not yours to edit */
+.track .ev.ro{background:#232833;border-color:#3b4354;color:#c2cadb;border-style:dashed}
+.track .ev.ro:hover{background:#2b313e}
+.track .ev.gone,.evchip.gone{opacity:.55;text-decoration:line-through;border-style:dotted}
+.evchip.ro{background:#232833;border-color:#3b4354;border-style:dashed}
+.gsrc{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim2);
+  border:1px solid var(--line2);border-radius:4px;padding:1px 4px;margin-left:6px}
 .track .now{position:absolute;top:0;bottom:0;width:2px;background:var(--bad);z-index:3;box-shadow:0 0 6px #ef5f5f80}
 
 .matrix{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -2049,9 +2056,13 @@ function _activeItems(){
     for(const t of g.threads){
       if(t.status==='dormant'||t.status==='done') continue;
       const s=currentStep(t); if(!s) continue;
-      const ev = s.eventId?eventById(s.eventId):null;
+      /* An event Google no longer has keeps its link (so the signal can say what
+         happened) but stops behaving like a slot — otherwise the step would sit
+         on a day it isn't booked for and never reach the unscheduled tray. */
+      const held = s.eventId?eventById(s.eventId):null;
+      const ev = (held && !gDead(held)) ? held : null;
       out.push({goal:g, thread:t, step:s, ev, dateKey:ev?ev.dateKey:null, start:ev?ev.start:null,
-                quadrant:s.quadrant, blocked:t.status==='blocked'});
+                quadrant:s.quadrant, blocked:t.status==='blocked', lostSlot:!!(held&&!ev)});
     }
   }
   return out;
@@ -2110,12 +2121,17 @@ function _signals(){
       if(t.needsBranch) out.push({sev:'hard',kind:'branch',goal:g,thread:t,days:q,
         text:'Branch unresolved — which way did it go?'});
       const s=currentStep(t);
+      /* A step whose event was deleted in Google raises this same signal rather
+         than being silently unanchored. Dropping a commitment has to be something
+         you did, not something the sync did to you while you weren't looking. */
+      const held = s && s.eventId ? eventById(s.eventId) : null;
+      const lost = !!(s && s.eventId && (!held || gDead(held)));
       if(!s) out.push({sev:'hard',kind:'nostep',goal:g,thread:t,days:q, text:'No next step defined'});
-      else if(!s.eventId && g.type!=='task') out.push({sev:'warn',kind:'unscheduled',goal:g,thread:t,days:q,
-        text:'Next step not on the calendar'});
-      else if(s.eventId){ const e=eventById(s.eventId);
-        if(e && e.dateKey<T) out.push({sev:'hard',kind:'slipped',goal:g,thread:t,days:daysBetween(e.dateKey,T),
-          text:'Slipped '+daysBetween(e.dateKey,T)+'d past its slot'}); }
+      else if((!s.eventId || lost) && g.type!=='task') out.push({sev:'warn',kind:'unscheduled',goal:g,thread:t,days:q,
+        text: lost ? 'Removed from Google Calendar — not booked any more' : 'Next step not on the calendar'});
+      else if(held){
+        if(held.dateKey<T) out.push({sev:'hard',kind:'slipped',goal:g,thread:t,days:daysBetween(held.dateKey,T),
+          text:'Slipped '+daysBetween(held.dateKey,T)+'d past its slot'}); }
       // decisions get a long leash and only nudge at 2x cadence
       const limit = quietLimit(g);
       if(limit>0 && q>limit) out.push({sev:q>limit*2?'hard':'warn',kind:'quiet',goal:g,thread:t,days:q,
@@ -2184,7 +2200,8 @@ function checkinAgenda(){
       const s=currentStep(t);
       if(!s){ nostep.push({goal:g,thread:t}); continue; }
       if(!moved.has(t.id)) quiet.push({goal:g,thread:t,step:s,days:daysQuiet(t)});
-      if(!s.eventId) unsched.push({goal:g,thread:t,step:s});
+      const bk = s.eventId ? eventById(s.eventId) : null;
+      if(!s.eventId || !bk || gDead(bk)) unsched.push({goal:g,thread:t,step:s});
     }
   }
   return {gates:openGates(), quiet, blocked, nostep, unsched, branch, hush, since};
@@ -2422,8 +2439,13 @@ function sigFixAct(act,btn){
 
 function renderSignals(){
   const sig=signals(); const r=$('#signals');
-  r.classList.toggle('empty', sig.length===0);
-  if(!sig.length){ r.innerHTML=''; SIGOPEN=null; return; }
+  /* The provider's own chips sit ahead of the groups and are deliberately not
+     snoozeable: "three changes waiting to sync" is a fact about the app, not a
+     nag about a thread, and muting it would just lose the writes quietly. */
+  const pins=gChips().map(c=>
+    `<div class="sig ${c.cls}" data-gact="${c.act}">${c.text}</div>`).join('');
+  r.classList.toggle('empty', sig.length===0 && !pins);
+  if(!sig.length){ r.innerHTML=pins; SIGOPEN=null; return; }
 
   const byKind={}, groups=[];
   for(const s of sig){
@@ -2470,7 +2492,7 @@ function renderSignals(){
   }
   // the resolver sits under the ribbon so it reads as an answer to the chip above it
   const fixPanel = fix ? sigResolverHTML(fix) : '';
-  r.innerHTML=`<div class="sigrow">${chips}${more}</div>${panel}${fixPanel}`;
+  r.innerHTML=`<div class="sigrow">${pins}${chips}${more}</div>${panel}${fixPanel}`;
   if(fix){ const f=$('#fxStep')||$('#fxTrig')||$('#fxDate')||$('#fxWhen'); if(f) setTimeout(()=>f.focus(),20); }
 }
 
@@ -2522,8 +2544,8 @@ function dayStripHTML(k,{drop=false}={}){
     ticks+=`<div class="hr" style="left:${calPos(h*60)}%"></div><div class="hrlbl" style="left:${calPos(h*60)}%">${fmtTime(h*60)}</div>`;}
   const lanes=timed.map(e=>{
     const l=calPos(e.start), w=Math.max(3,calPos(e.start+e.dur)-l);
-    return `<div class="${e.stepId?'ev step':'ev'}" data-ev="${e.id}" style="left:${l}%;width:${w}%">${
-      e.recur?'&#8635; ':''}${esc(e.title)}</div>`;}).join('');
+    return `<div class="ev${e.stepId?' step':''}${gForeign(e)?' ro':''}${gDead(e)?' gone':''}" data-ev="${e.id}"
+      style="left:${l}%;width:${w}%">${e.recur?'&#8635; ':''}${esc(e.title)}</div>`;}).join('');
   const now = k===today() ? `<div class="now" style="left:${calPos(nowMin())}%"></div>` : '';
   const L=loadState(k);
   return `<div class="strip">
@@ -2533,7 +2555,8 @@ function dayStripHTML(k,{drop=false}={}){
     ${loadBar(k,{always:true})}
     <div class="track${drop?' droppable':''}"${drop?' data-caldrop="1"':''}>${ticks}${lanes}${now}<div class="dropline"></div></div>
     ${allday.length?`<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">${allday.map(e=>
-      `<span class="evchip ${e.stepId?'step':''}" data-ev="${e.id}">${e.recur?'&#8635; ':''}${esc(e.title)}</span>`).join('')}</div>`:''}
+      `<span class="evchip ${e.stepId?'step':''}${gForeign(e)?' ro':''}${gDead(e)?' gone':''}" data-ev="${e.id}">${
+        e.recur?'&#8635; ':''}${esc(e.title)}</span>`).join('')}</div>`:''}
   </div>`;
 }
 
@@ -3453,7 +3476,7 @@ function disarm(){ clearTimeout(ARMED_T); ARMED=null; }
 function repaintArmed(){
   const m=$('.mbody[data-goal]');
   if(m){ refreshGoal(m.dataset.goal); return; }
-  if($('[data-ui="pf-forget"]')) openPrefs();
+  if($('#pfMode')) openPrefs();        // the Settings panel: it owns two armed controls now
 }
 const armLabel=(key,normal,armed)=> ARMED===key ? armed : normal;
 
@@ -3718,6 +3741,8 @@ function wireDrag(){
 }
 let swallowClick=false;
 $('#signals').onclick=e=>{
+  const ga=e.target.closest('[data-gact]');
+  if(ga){ gAct(ga.dataset.gact); return; }
   const zz=e.target.closest('[data-snooze]');
   if(zz){ e.stopPropagation(); snoozeSignals(zz.dataset.snooze.split('|')); return; }
   const fx=e.target.closest('[data-fix]');
@@ -3749,6 +3774,27 @@ $('#signals').oninput=e=>{
   el.innerHTML = L.over ? `<span class="overtxt">that day is already ${hrs(L.mins)}</span> against a ${hrs(L.budget)} day`
                         : `${hrs(L.free)} free that day`;
 };
+
+/* The three things a person can do to the provider by hand. None of them takes a
+   checkpoint: connecting, syncing and reconnecting are not edits to your goals,
+   and putting them on the undo stack would mean Cmd-Z silently signing you out. */
+function gAct(a){
+  if(a==='gsync'){
+    toast('Syncing with Google\u2026');
+    gFlush().then(()=>gSync({full:false, reason:'manual'}))
+      .then(r=>toast(r && r.skipped==='follower' ? 'Another tab is syncing.' : 'Calendar synced.'))
+      .catch(err=>toast(err.message||'Sync failed.'));
+    return;
+  }
+  if(a==='gconnect'){
+    gConnect().then(acct=>{ render(); toast(acct?('Connected as '+acct+'.'):'Google Calendar connected.'); })
+              .catch(err=>{ GERR=err.message; renderSignals(); toast(err.message||'Could not connect.'); });
+    return;
+  }
+  if(a==='gdisconnect'){
+    gDisconnect(); render(); toast('Disconnected — your schedule stayed put, as local events.');
+  }
+}
 
 function toggleStep(gid,tid,sid){
   const f=findStep(sid); if(!f) return;
@@ -3783,6 +3829,25 @@ function openDefineNext(g,t){
 function openEvent(id){
   const e = id?eventById(id):newEvent({dateKey:DB.meta.cursor});
   const m = id?masterEvent(id):null;
+  /* Somebody else's calendar entry. It shows, and it counts against the day, but
+     the fields would be a lie: saving them here would be overwritten by the next
+     pull, and Ply has no business rewriting a meeting it didn't create. */
+  if(gForeign(e)){
+    const L0=loadState(e.dateKey);
+    openModal(`<h3>From Google Calendar<button class="btn ghost x" data-close>&times;</button></h3>
+      <div class="mbody">
+        <div class="sec"><b style="color:var(--text)">${esc(e.title)}</b>
+          <div class="tiny muted" style="margin-top:4px">${fmtFull(e.dateKey)}${
+            e.allDay?' &mdash; all day':' &mdash; '+fmtTime(e.start)+', '+hrs(e.dur)}</div></div>
+        <div class="sec tiny muted">This one came from your calendar, so it's read-only here &mdash;
+          change it in Google and the next sync brings it across. It still counts against the day:
+          ${fmtDate(e.dateKey)} holds ${hrs(L0.mins)} of a ${hrs(L0.budget)} day${L0.over?' — already over':''}.</div>
+      </div>
+      <div class="mfoot">${e.gcal&&e.gcal.link
+        ? `<a class="btn" href="${esc(e.gcal.link)}" target="_blank" rel="noopener">Open in Google Calendar</a>`:''}
+        <span class="spacer"></span><button class="btn" data-close>Close</button></div>`);
+    return;
+  }
   const rec = (m&&m.recur)||null;
   const anchored = !!e.stepId;                       // step anchors are single commitments
   const L = loadState(e.dateKey);
@@ -3812,7 +3877,8 @@ function openEvent(id){
       </div>`}
 
       <div class="sec tiny muted">${fmtDate(e.dateKey)} currently holds ${hrs(L.mins)} of a ${hrs(L.budget)} day${L.over?' — already over':''}.
-        <br>Calendar source: ${esc(e.src)}. Google Calendar sync plugs into the same adapter later.</div>
+        <br>Calendar source: ${esc(e.src)}${e.gcal&&e.gcal.id?' &mdash; synced':(e.gcal?' &mdash; waiting to sync':'')}.${
+        gDead(e)?' <b style="color:var(--warn)">Deleted in Google.</b> Saving puts it back.':''}</div>
     </div>
     <div class="mfoot">
       ${id?`<button class="btn danger" data-ui="ev-del" data-id="${e.id}">Delete${m&&m.recur?' series':''}</button>`:''}
@@ -4096,7 +4162,9 @@ const ACT_LABEL={
   'sub-add':'that subtask', 'sub-del':'removing that subtask',
   'sub-up':'that reorder', 'sub-down':'that reorder', 'rename':'that rename',
   'entry-add':'that pipeline entry', 'ev-skip':'skipping that occurrence',
-  'pf-forget':'forgetting the learned types', finish:'completing that goal'
+  'pf-forget':'forgetting the learned types', finish:'completing that goal',
+  'g-connect':'connecting Google Calendar', 'g-off':'disconnecting Google Calendar',
+  'g-sync':'that sync'
 };
 
 function uiAct(a,btn){
@@ -4140,11 +4208,27 @@ function uiAct(a,btn){
     m.checkinMode=$('#pfMode').value; m.checkinDow=+$('#pfDow').value; m.checkinEveryDays=+$('#pfN').value||7;
     m.projects=$('#pfProj').value.split(',').map(s=>s.trim()).filter(Boolean);
     if($('#pfBudget')) m.dayBudgetMins=+$('#pfBudget').value||240;
+    gReadPrefs();
     save(); closeModal(); render(); toast('Settings saved.');
   }
   if(a==='pf-forget'){
     if(!armConfirm('pf-forget')) return;      // Settings is open, so arm the button rather than stack a dialog
     DB.meta.learned=[]; save(); openPrefs(); toast('Forgotten — back to the rules alone.');
+  }
+  if(a==='g-connect'){
+    gReadPrefs(); save();
+    toast('Opening Google sign-in\u2026');
+    gConnect().then(acct=>{ openPrefs(); render(); toast(acct?('Connected as '+acct+'.'):'Google Calendar connected.'); })
+              .catch(err=>{ GERR=err.message; openPrefs(); toast(err.message||'Could not connect.'); });
+  }
+  if(a==='g-sync'){
+    gFlush().then(()=>gSync({reason:'manual'}))
+      .then(()=>{ openPrefs(); toast('Calendar synced.'); })
+      .catch(err=>toast(err.message||'Sync failed.'));
+  }
+  if(a==='g-off'){
+    if(!armConfirm('g-off')) return;          // Settings is open: arm in place rather than stack a dialog
+    gDisconnect(); openPrefs(); render(); toast('Disconnected — your schedule stayed put, as local events.');
   }
   if(a==='cv-save'){
     const src=goalById(btn.dataset.id);
@@ -4275,12 +4359,55 @@ function openPrefs(){
             >${armLabel('pf-forget','Forget all','Really forget all '+m.learned.length+'?')}</button>`
           : `<div class="tiny muted">Nothing learned yet. Correcting a goal's type &mdash; in the check-in or the goal
               editor &mdash; teaches the classifier to read similar phrases the same way next time.</div>`}</div>
-      <div class="sec"><h4>Calendar</h4>
-        <div class="tiny muted">Source: <b>local (manual entry)</b>. Google Calendar sync drops into the <span class="mono">CAL</span> adapter &mdash;
-        views and the engine never touch the store directly, so read-only or read/write both slot in without touching the goal model.</div></div>
+      <div class="sec"><h4>Google Calendar</h4>
+        ${gPrefsHTML()}</div>
       ${MEMONLY?'<div class="sec" style="border-color:#5a2b2b"><b>Storage unavailable</b><div class="tiny">This session only. Export before closing.</div></div>':''}
     </div>
     <div class="mfoot"><span class="spacer"></span><button class="btn primary" data-ui="pf-save">Save</button></div>`);
+}
+
+/* The Settings panel for the provider. Kept out of openPrefs() because it has
+   three quite different states to say plainly: this page can't authenticate at
+   all, there's no client id yet, or it's connected and here's to whom. */
+function gPrefsHTML(){
+  const m=gmeta(), cur=gCursor();
+  const id=gClientId(), fromBuild=!m.clientId && !!G_BUILD_ID;
+  const field=`<label class="fld" style="margin-top:8px"><span>OAuth client id</span>
+      <input type="text" id="pfGId" value="${esc(m.clientId||'')}"
+        placeholder="${esc(G_BUILD_ID||'123-abc.apps.googleusercontent.com')}"></label>
+    <label class="fld"><span>Calendar</span>
+      <input type="text" id="pfGCal" value="${esc(m.calendarId||'primary')}" placeholder="primary"></label>
+    <div class="tiny muted" style="margin-top:6px">${fromBuild
+      ? 'Using the id this build ships with; type one here to override it.'
+      : 'A browser client id is public by design &mdash; it is not a secret.'}
+      See <b>Google Calendar</b> in the README for how to make one.</div>`;
+
+  if(!gOriginOK()) return `<div class="tiny muted">Google will not accept
+      <span class="mono">${esc(location.protocol)}</span> as an authorized JavaScript origin, so sync is off on this
+      page. Run Ply from <span class="mono">http://localhost</span> (<span class="mono">npm run dev</span>) or an
+      https origin. Everything else works exactly as it does here &mdash; the local provider <i>is</i> the offline cache.</div>`;
+
+  if(!m.enabled) return `<div class="tiny muted">Source: <b>local (manual entry)</b>.
+      Connecting reads your calendar into the day and week load, and puts every step you schedule
+      onto it. Your goals stay here either way.</div>
+    ${field}
+    <button class="btn sm primary" data-ui="g-connect" style="margin-top:10px"
+      ${id?'':'disabled title="Add a client id first"'}>Connect Google Calendar</button>`;
+
+  const n=gPending();
+  return `<div class="tiny muted">Connected${m.account?` as <b style="color:var(--text)">${esc(m.account)}</b>`:''},
+      writing to <b style="color:var(--text)">${esc(m.calendarId||'primary')}</b>.
+      <br>Last sync: ${cur.last?fmtDate(dkey(new Date(cur.last)))+' '+fmtTime(new Date(cur.last).getHours()*60+new Date(cur.last).getMinutes()):'not yet'}${
+      n?` &mdash; <b style="color:var(--warn)">${n} change${n>1?'s':''} waiting</b>`:''}${
+      GSTATE==='stale'?' &mdash; <b style="color:var(--bad)">access expired</b>':''}.</div>
+    ${field}
+    <div class="row" style="margin-top:10px">
+      <button class="btn sm" data-ui="g-sync">Sync now</button>
+      <button class="btn sm ${ARMED==='g-off'?'danger':''}" data-ui="g-off"
+        >${armLabel('g-off','Disconnect','Really disconnect?')}</button>
+    </div>
+    <div class="tiny muted" style="margin-top:6px">Disconnecting keeps everything you've scheduled &mdash;
+      your own events stay as local ones, and only the cached copy of the rest of your calendar goes.</div>`;
 }
 
 /* ===================== [SECTION: SEED] ===================== */
@@ -4491,6 +4618,12 @@ document.addEventListener('keydown',e=>{
 
 render();
 wireDrag();          // once — #view outlives every render
+/* The provider starts itself if it was left connected: pull on load, then on
+   focus and every five minutes. Anything queued from last session goes first. */
+if(gOn()){
+  gStart();
+  gFlush().then(()=>gSync({full:!gCursor().token, reason:'load'})).catch(gNote);
+}
 /* nudge: if the check-in is due, say so once on load rather than waiting to be noticed */
 if(checkinDue()) setTimeout(()=>toast('Weekly check-in is due — press c'),700);
 </script>
