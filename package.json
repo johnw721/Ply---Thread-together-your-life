@@ -1,0 +1,22 @@
+{
+  "name": "ply",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ply — thread your next move. A goal tracker built on the claim that goals fail when they quietly stop having a next move.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && vite build --config vite.config.single.js",
+    "build:multi": "vite build",
+    "build:single": "vite build --config vite.config.single.js",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:legacy": "cross-env-shim PLY_TARGET=legacy vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "jsdom": "^30.1.0",
+    "vitest": "^3.2.7"
+  }
+}

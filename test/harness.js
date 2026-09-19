@@ -1,0 +1,245 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { vi } from 'vitest';
+import { legacyBridgeSource } from './bridge.js';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+/* The migrated tree is the default target once it exists. Until src/main.js is
+   there, asking for it would fail every suite for a reason that has nothing to do
+   with the behaviour under test, so the monolith is the default instead. */
+const HAS_SRC = fs.existsSync(path.join(ROOT, 'src', 'main.js'));
+export const TARGET = process.env.PLY_TARGET || (HAS_SRC ? 'src' : 'legacy');
+export const isLegacy = TARGET !== 'src';
+
+/* ---------------------------------------------------------------------------
+   jsdom has no layout engine, so a handful of things the app calls are simply
+   absent. Stubbing them is the documented approach from the original suites
+   ("jsdom has no layout, so elementFromPoint is stubbed"): the handler logic is
+   what's under test, the geometry isn't.
+--------------------------------------------------------------------------- */
+export function stubLayout(win){
+  const doc = win.document;
+
+  // elementFromPoint: jsdom throws "not implemented". Drive it from a registry the
+  // drag tests populate, so a drop can be aimed at a specific element by id.
+  win.__hit = null;
+  doc.elementFromPoint = (x, y) => {
+    if (typeof win.__hit === 'function') return win.__hit(x, y);
+    return win.__hit || null;
+  };
+
+  // Every rect is 0x0 without layout, which would make calMinAt() always return
+  // the start of the day. Let a test declare a rect for an element instead.
+  const proto = win.Element.prototype;
+  const realRect = proto.getBoundingClientRect;
+  proto.getBoundingClientRect = function(){
+    if (this.__rect) return this.__rect;
+    return realRect ? realRect.call(this) : {x:0,y:0,width:0,height:0,top:0,left:0,right:0,bottom:0};
+  };
+
+  // offsetParent is null for everything in jsdom, which would empty the focus
+  // trap's candidate list. Treat anything attached to the document as visible.
+  if (!Object.getOwnPropertyDescriptor(win.HTMLElement.prototype, '__offsetPatched')) {
+    Object.defineProperty(win.HTMLElement.prototype, 'offsetParent', {
+      configurable: true,
+      get(){ return this.isConnected && !this.hidden ? (this.parentElement || this.ownerDocument.body) : null; }
+    });
+    Object.defineProperty(win.HTMLElement.prototype, '__offsetPatched', {value:true});
+  }
+
+  if (!proto.setPointerCapture) proto.setPointerCapture = function(){};
+  if (!proto.releasePointerCapture) proto.releasePointerCapture = function(){};
+
+  // exportJSON() reaches for both of these.
+  win.URL.createObjectURL = win.URL.createObjectURL || (()=> 'blob:stub');
+  win.URL.revokeObjectURL = win.URL.revokeObjectURL || (()=>{});
+
+  // Native dialogs must never be reachable — the "no browser dialogs" suite
+  // asserts this by driving every flow with them armed to throw.
+  return win;
+}
+
+/* Every flow is driven with the natives armed to throw, which is how the suite
+   proves they are gone rather than merely unused on the happy path. */
+export function forbidNativeDialogs(win){
+  const boom = name => () => { throw new Error('native '+name+'() was called'); };
+  win.prompt  = boom('prompt');
+  win.confirm = boom('confirm');
+  win.alert   = boom('alert');
+}
+
+export function readLegacyHTML(){
+  return fs.readFileSync(path.join(ROOT, 'legacy', 'index.html'), 'utf8');
+}
+export function readAppHTML(){
+  const p = path.join(ROOT, 'index.html');
+  return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : readLegacyHTML();
+}
+
+/* The markup the app renders into. Taken from whichever index.html is the live
+   entry, minus its scripts, so the shell can never drift from the real one. */
+export function appShell(html){
+  const body = /<body[^>]*>([\s\S]*?)<\/body>/i.exec(html);
+  return (body ? body[1] : '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .trim();
+}
+
+let seq = 0;
+
+/* ---------------------------------------------------------------------------
+   boot() — a fresh app, either target, same handle back.
+
+   opts.seed   true  (default) demo data, as a first run gives you
+               false            a clean blankDB
+               fn               called with the api to build the DB itself
+   opts.stored a JSON string parked in localStorage before load() runs
+   opts.key    which localStorage key opts.stored goes under
+--------------------------------------------------------------------------- */
+export async function boot(opts = {}){
+  const { seed = true, stored = null, key = 'ply.v1', legacyDate = null } = opts;
+  return isLegacy ? bootLegacy({seed, stored, key, legacyDate})
+                  : bootSrc({seed, stored, key, legacyDate});
+}
+
+async function bootLegacy({seed, stored, key}){
+  const { JSDOM } = await import('jsdom');
+  /* The live entry, not the frozen snapshot: legacy/index.html is the
+     pre-migration reference to diff against, but the monolith under test is the
+     one being edited. readAppHTML() falls back to the snapshot if it is gone. */
+  let html = readAppHTML();
+  const bridge = `<script>${legacyBridgeSource()}</script>`;
+
+  // localStorage has to be populated before the app's own script runs, so the
+  // seeding script goes in ahead of it.
+  const pre = stored
+    ? `<script>try{localStorage.setItem(${JSON.stringify(key)}, ${JSON.stringify(stored)});}catch(e){}</script>`
+    : `<script>try{localStorage.clear();}catch(e){}</script>`;
+  html = html.replace('<script>', pre + '<script>');
+  html = html.replace('</body>', bridge + '</body>');
+
+  const dom = new JSDOM(html, {
+    runScripts: 'dangerously',
+    url: 'http://localhost/ply-' + (++seq) + '/',
+    pretendToBeVisual: true
+  });
+  const win = dom.window;
+  stubLayout(win);
+  const api = win.__ply;
+  finishBoot(api, win, {seed, stored});
+  return wrap(api, win, dom);
+}
+
+async function bootSrc({seed, stored, key}){
+  const win = globalThis.window;
+  stubLayout(win);
+
+  try { win.localStorage.clear(); } catch(_) {}
+  if (stored) { try { win.localStorage.setItem(key, stored); } catch(_) {} }
+
+  // A fresh module graph per boot: the store holds DB at module scope, so without
+  // this the second test in a file would inherit the first one's database.
+  vi.resetModules();
+  win.document.body.innerHTML = appShell(readAppHTML());
+  win.document.body.className = '';
+
+  const mod = await import('../src/main.js?boot=' + (++seq));
+  const api = mod.bootstrap({ seed: seed === true });
+  win.__ply = api;
+  finishBoot(api, win, {seed, stored});
+  return wrap(api, win, null);
+}
+
+function finishBoot(api, win, {seed, stored}){
+  if (typeof seed === 'function'){
+    api.DB = api.blankDB();
+    api.DB.meta.cursor = api.today();
+    seed(api);
+    api.save();
+    api.render();
+  } else if (seed === false && !stored){
+    api.DB = api.blankDB();
+    api.DB.meta.cursor = api.today();
+    api.save();
+    api.render();
+  }
+}
+
+function wrap(api, win, dom){
+  const doc = win.document;
+  const h = {
+    api, ply: api, window: win, document: doc, dom,
+    $:  (s, r=doc) => r.querySelector(s),
+    $$: (s, r=doc) => [...r.querySelectorAll(s)],
+    text: (s, r=doc) => { const e = r.querySelector(s); return e ? e.textContent.trim() : null; },
+
+    /* click something the way a person would: the real listener chain, plus a
+       tick for the deferred undo commit to land. */
+    click(target, init={}){
+      const el = typeof target === 'string' ? doc.querySelector(target) : target;
+      if (!el) throw new Error('nothing to click for ' + target);
+      el.dispatchEvent(new win.MouseEvent('click', {bubbles:true, cancelable:true, ...init}));
+      return el;
+    },
+    key(target, key, init={}){
+      const el = typeof target === 'string' ? doc.querySelector(target) : target;
+      (el || doc).dispatchEvent(new win.KeyboardEvent('keydown',
+        {key, bubbles:true, cancelable:true, ...init}));
+    },
+    type(target, value){
+      const el = typeof target === 'string' ? doc.querySelector(target) : target;
+      if (!el) throw new Error('no field for ' + target);
+      if (el.type === 'checkbox') el.checked = !!value; else el.value = value;
+      el.dispatchEvent(new win.Event('input', {bubbles:true}));
+      return el;
+    },
+    change(target, value){
+      const el = h.type(target, value);
+      el.dispatchEvent(new win.Event('change', {bubbles:true}));
+      return el;
+    },
+    /* the deferred checkpoint commit runs on a timer */
+    async settle(){ await new Promise(r => setTimeout(r, 0)); },
+
+    /* pointer drags: jsdom has no PointerEvent, and the app only reads
+       clientX/clientY/pointerId/pointerType/button off the event. */
+    pointer(el, type, props={}){
+      const ev = new win.Event(type, {bubbles:true, cancelable:true});
+      Object.assign(ev, {clientX:0, clientY:0, pointerId:1, pointerType:'mouse', button:0}, props);
+      el.dispatchEvent(ev);
+      return ev;
+    },
+    aim(elOrFn){ win.__hit = elOrFn; },
+    rect(el, r){ el.__rect = {x:0,y:0,top:0,left:0,right:0,bottom:0,width:0,height:0, ...r}; return el; },
+
+    forbidNatives(){ forbidNativeDialogs(win); },
+    lastToast(){ const t = doc.querySelector('#toast'); return t ? t.textContent : ''; },
+    html(){ return doc.querySelector('#view').innerHTML; },
+    close(){ if (dom) dom.window.close(); }
+  };
+  return h;
+}
+
+/* A deterministic little database, so tests that care about one rule aren't
+   reading around eleven demo goals. */
+export function tinyDB(api, build){
+  api.DB = api.blankDB();
+  api.DB.meta.cursor = api.today();
+  api.DB.meta.lastCheckin = api.addDays(api.today(), -7);
+  const made = build ? build(api) : null;
+  api.save();
+  return made;
+}
+
+/* goal + thread + live step in one line, for the many tests that need a subject
+   rather than a scenario. */
+export function makeGoal(api, o = {}){
+  const g = api.newGoal({title: o.title || 'A goal', type: o.type || 'milestone', ...o.goal});
+  const t = api.newThread({rel: o.rel || 'sequential', ...o.thread});
+  if (o.step !== null) t.steps.push(api.newStep(o.step || 'The next move', o.stepOpts || {}));
+  g.threads.push(t);
+  api.DB.goals.push(g);
+  return {goal: g, thread: t, step: t.steps[t.steps.length - 1]};
+}
