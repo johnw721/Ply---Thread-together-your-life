@@ -15,6 +15,13 @@ export const BRIDGE_VALUES = [
   'newGoal','newThread','newStep','newSub','newEvent','logIt','touchThread',
   'addGoal','deleteGoal','addEvent','removeEvent','skipOccurrence',
   'occursOn','occurrenceOf','masterEvent','eventsOn','CAL',
+  // google provider
+  'G_SCOPE','G_BACK_DAYS','G_FWD_DAYS','G_SYNCKEY','G_MAXPAGES',
+  'gmeta','gqueue','gCal','gOn','gClientId','gOriginOK','gCursor','gCursorSet',
+  'gLoadGIS','gRequestToken','gToken','gConnect','gDisconnect','gapi',
+  'gISO','gReadTime','gToRow','gFromRow','gWinFrom','gWinTo','inWindow','gDead','gForeign',
+  'gEnqueue','gPending','gFlush','gLease','gSync','gApply','gCancel','gDrop','gAdopt','gMerge',
+  'gStart','gStop','gChips','gAct','gPrefsHTML','gReadPrefs',
   // budget
   'BUDGET_COLOURS','budget','catColour','budgetState','fundableGoals','catProjection','logContribution',
   'dayBudget','loadState','loadBar','paintBudget','commitBudget','budAct','viewBudget',
@@ -49,6 +56,7 @@ export const BRIDGE_VALUES = [
 /* Reassigned at runtime — must be read through a getter or the test sees a stale object. */
 export const BRIDGE_ACCESSORS = [
   'DB','PASS','MEMONLY','EXTERNAL','UNDO','REDO','PENDING',
+  'GTOK','GSTATE','GERR','GIS','GTIMER','GDONE',
   'CK','CKROW','SIGOPEN','SIGALL','SIGFIX','ARMED','GEROW','RETURN_FOCUS','swallowClick','lastZoomIdx'
 ];
 

@@ -243,3 +243,72 @@ export function makeGoal(api, o = {}){
   api.DB.goals.push(g);
   return {goal: g, thread: t, step: t.steps[t.steps.length - 1]};
 }
+
+/* ---------------------------------------------------------------------------
+   Google stubs. jsdom has no fetch and no Google Identity Services, which is
+   precisely the shape the offline path expects, so both are installed
+   explicitly rather than left to the environment.
+
+   gFetch() is a tiny recording router: routes are matched in order, each one is
+   a [predicate, handler] pair, and everything unmatched is a 404 so a test can
+   never pass on a request it didn't mean to make.
+--------------------------------------------------------------------------- */
+export function gisStub(win, {token='tok-1', expires=3600, fail=null}={}){
+  const calls=[];
+  win.google = {accounts:{oauth2:{
+    initTokenClient(cfg){
+      const c={...cfg, requestAccessToken(o){
+        calls.push({prompt:(o&&o.prompt)||'', scope:cfg.scope, client_id:cfg.client_id});
+        setTimeout(()=>{
+          if(fail) (c.error_callback||(()=>{}))({message:fail});
+          else c.callback({access_token:(typeof token==='function'?token():token),
+                           expires_in:expires, scope:cfg.scope, token_type:'Bearer'});
+        },0);
+      }};
+      return c;
+    },
+    revoke(t,cb){ calls.push({revoked:t}); if(cb) cb(); }
+  }}};
+  win.google.__calls = calls;
+  return calls;
+}
+
+export function fetchStub(win, routes=[]){
+  const log=[];
+  win.fetch = async (url, init={})=>{
+    const u=String(url), method=(init.method||'GET').toUpperCase();
+    const body = init.body ? JSON.parse(init.body) : null;
+    const rec={url:u, method, body, auth:(init.headers||{}).Authorization||null};
+    log.push(rec);
+    for(const [match, handle] of win.fetch.routes){
+      if(!match(u, method, rec)) continue;
+      const r = typeof handle==='function' ? await handle(rec) : handle;
+      if(r instanceof Error) throw r;
+      const status = r.status || 200;
+      return {
+        ok: status>=200 && status<300, status,
+        json: async ()=> r.body===undefined ? {} : r.body,
+        text: async ()=> JSON.stringify(r.body||{})
+      };
+    }
+    return {ok:false, status:404, json:async()=>({error:'no stub for '+method+' '+u}),
+            text:async()=>'no stub'};
+  };
+  win.fetch.routes = routes;
+  win.fetch.log = log;
+  return win.fetch;
+}
+
+/* the shape Google returns for one event */
+export function gEvent(o={}){
+  const {id='g1', summary='Remote thing', date=null, start='2026-09-20T13:00:00-04:00',
+         end='2026-09-20T14:00:00-04:00', updated='2026-09-19T10:00:00.000Z',
+         status='confirmed', stepId=null, goalId=null, threadId=null, etag='"e1"'} = o;
+  const ev={id, summary, status, updated, etag, htmlLink:'https://calendar.google.com/x/'+id};
+  if(date){ ev.start={date}; ev.end={date}; }
+  else { ev.start={dateTime:start, timeZone:'America/New_York'};
+         ev.end={dateTime:end, timeZone:'America/New_York'}; }
+  if(stepId) ev.extendedProperties={private:{plyStepId:stepId, plyGoalId:goalId||'', plyThreadId:threadId||'', plyV:'7'}};
+  return ev;
+}
+
