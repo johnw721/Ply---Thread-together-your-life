@@ -4,7 +4,7 @@ import { dayBudget, hrs, loadState } from './budget.js';
 import { CAL } from './cal.js';
 import { ckAct, findStep, setCK, subjHead, suggestDay, suggestTime } from './checkin.js';
 import { ARMED, armConfirm, armLabel, disarm, newInAct, newInHTML, takeConfirmCb } from './components/dialogs.js';
-import { closeModal, openModal } from './components/modal.js';
+import { closeModal, openModal } from './components/modal.jsx';
 import { DOWS, buildGoalFrom, cadenceOf, classify, completeStep, daysQuiet, followThrough, learnType, moveItem, shortName, streak, subProgress, subs, toggleSub } from './engine.js';
 import { gConnect, gDead, gDisconnect, gFlush, gForeign, gPrefsHTML, gReadPrefs, gSync, setGErr } from './google.js';
 import { installPrefsHTML, notifDisable, notifEnable, notifPrefsHTML, notifWanted } from './notify.js';

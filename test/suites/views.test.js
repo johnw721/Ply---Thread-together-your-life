@@ -229,3 +229,223 @@ describe('the completed archive [' + TARGET + ']', () => {
     expect(h.$('.lempty').textContent).toContain('Nothing finished yet');
   });
 });
+
+describe('day view [' + TARGET + ']', () => {
+  it('shows the four quadrants with their counts, and an empty note where there is nothing', () => {
+    const a = makeGoal(p, { title: 'urgent', step: 'do now thing', stepOpts: { quadrant: 'q1' } });
+    p.CAL.anchor(a.goal, a.thread, a.step, p.today(), 9 * 60, 45);
+    at('day');
+
+    const quads = h.$$('.quad');
+    expect(quads.length).toBe(4);
+    expect(quads.map(q => q.dataset.quad)).toEqual(['q1', 'q2', 'q3', 'q4']);
+    expect(h.$('.quad[data-quad="q1"] h3').textContent).toContain('Do now');
+    expect(h.$('.quad[data-quad="q1"] .n').textContent).toBe('1');
+    expect(h.$('.quad[data-quad="q2"] .empty').textContent).toBe('nothing here');
+  });
+
+  it('a card carries the ids a drop needs, and its meta', () => {
+    const g = makeGoal(p, { title: 'Ship Plumbline', step: 'Terraform staging', stepOpts: { quadrant: 'q2' } });
+    p.CAL.anchor(g.goal, g.thread, g.step, p.today(), 14 * 60, 45);
+    at('day');
+
+    const card = h.$('.card');
+    expect(card.dataset.step).toBe(g.step.id);
+    expect(card.dataset.thread).toBe(g.thread.id);
+    expect(card.dataset.goal).toBe(g.goal.id);
+    expect(card.querySelector('.ttl').textContent).toBe('Terraform staging');
+    expect(card.querySelector('.meta').textContent).toContain('Plumbline');
+    expect(card.querySelector('.meta').textContent).toContain('2pm');
+    expect(card.querySelector('.grip')).toBeTruthy();
+  });
+
+  it('marks an unscheduled step, and a slipped one with how far', () => {
+    makeGoal(p, { title: 'loose', type: 'task', step: 'a task' });
+    const slip = makeGoal(p, { title: 'late', step: 'overdue thing' });
+    p.CAL.anchor(slip.goal, slip.thread, slip.step, p.addDays(p.today(), -2), 9 * 60, 45);
+    at('day');
+    expect(h.$('#view').textContent).toContain('slipped 2d');
+  });
+
+  it('today pulls in overdue work and loose tasks; another day does not', () => {
+    const slip = makeGoal(p, { title: 'overdue' , step: 'overdue step' });
+    p.CAL.anchor(slip.goal, slip.thread, slip.step, p.addDays(p.today(), -1), 9 * 60, 45);
+    makeGoal(p, { title: 'a task', type: 'task', step: 'loose task' });
+    at('day');
+    expect(h.$('#view').textContent).toContain('overdue step');
+    expect(h.$('#view').textContent).toContain('loose task');
+
+    p.DB.meta.cursor = p.addDays(p.today(), 1);
+    p.render();
+    expect(h.$('#view').textContent).not.toContain('overdue step');
+  });
+
+  it('anything with no slot drops into the tray below', () => {
+    makeGoal(p, { title: 'unscheduled one', step: 'no slot yet' });
+    at('day');
+    const tray = h.$$('.strip').at(-1);
+    expect(tray.textContent).toContain('Not on the calendar yet');
+    expect(tray.textContent).toContain("if it isn't scheduled, it isn't real");
+    expect(tray.textContent).toContain('no slot yet');
+  });
+
+  it('the head names the day and the nav moves the cursor', () => {
+    at('day');
+    expect(h.$('.viewhead h2').textContent).toBe('Today');
+    h.click('[data-nav="1"]');
+    expect(p.DB.meta.cursor).toBe(p.addDays(p.today(), 1));
+    expect(h.$('.viewhead h2').textContent).not.toBe('Today');
+    h.click('[data-nav="0"]');
+    expect(p.DB.meta.cursor).toBe(p.today());
+  });
+
+  it('the checkbox completes the step, which re-books the successor out of today', async () => {
+    const g = makeGoal(p, { title: 'tick me', type: 'habit', rel: 'cyclical', step: 'session one' });
+    g.goal.cadenceDays = 3;
+    p.CAL.anchor(g.goal, g.thread, g.step, p.today(), 9 * 60, 45);
+    at('day');
+    h.click('.card .chk');
+    await h.settle();
+
+    expect(g.step.done).toBe(true);
+    const next = p.currentStep(g.thread);
+    expect(p.eventById(next.eventId).dateKey).toBe(p.addDays(p.today(), 3));
+    expect(h.$('.card')).toBe(null);          // nothing left on today
+  });
+
+  it('a card opens its goal', () => {
+    const g = makeGoal(p, { title: 'open me', step: 'a step' });
+    p.CAL.anchor(g.goal, g.thread, g.step, p.today(), 9 * 60, 45);
+    at('day');
+    h.click('.card .ttl');
+    expect(h.$('.mbody[data-goal]').dataset.goal).toBe(g.goal.id);
+  });
+});
+
+describe('week view [' + TARGET + ']', () => {
+  it('lays out seven columns from Sunday, marking today', () => {
+    at('week');
+    const cols = h.$$('.daycol');
+    expect(cols.length).toBe(7);
+    expect(cols[0].dataset.day).toBe(p.startOfWeek(p.today()));
+    expect(h.$$('.daycol.today').length).toBe(1);
+    expect(cols.every(c => c.dataset.daydrop === '1')).toBe(true);
+  });
+
+  it('timed events sit on top and untimed tasks beneath, with a quadrant dot', () => {
+    const g = makeGoal(p, { title: 'a goal', step: 'untimed step', stepOpts: { quadrant: 'q1' } });
+    const ev = p.CAL.anchor(g.goal, g.thread, g.step, p.today(), 0, 1440);
+    ev.allDay = true;
+    p.addEvent(p.newEvent({ title: 'Standup', dateKey: p.today(), start: 9 * 60, dur: 30 }));
+    at('week');
+
+    const col = h.$(`.daycol[data-day="${p.today()}"]`);
+    expect(col.querySelector('.evchip').textContent).toContain('Standup');
+    const chip = col.querySelector('.tchip[data-step]');
+    expect(chip.textContent).toContain('untimed step');
+    expect(chip.querySelector('.dot')).toBeTruthy();
+    expect(chip.dataset.step).toBe(g.step.id);
+  });
+
+  it('says how much the week holds, and carries the budget panel underneath', () => {
+    p.addEvent(p.newEvent({ dateKey: p.today(), start: 9 * 60, dur: 120 }));
+    at('week');
+    expect(h.$('.viewhead .sub').textContent).toContain('2h booked across the week');
+    expect(h.$('.budget')).toBeTruthy();
+    expect(h.$('.budget .lbl').textContent).toContain('Weekly budget');
+  });
+
+  it('the nav moves a week at a time', () => {
+    at('week');
+    h.click('[data-nav="7"]');
+    expect(p.DB.meta.cursor).toBe(p.addDays(p.today(), 7));
+    h.click('[data-nav="0"]');
+    expect(p.DB.meta.cursor).toBe(p.today());
+  });
+});
+
+describe('quarter view [' + TARGET + ']', () => {
+  it('draws 13 week density bars and a row per non-task goal', () => {
+    makeGoal(p, { title: 'Ship Plumbline', type: 'milestone' });
+    makeGoal(p, { title: 'a task', type: 'task' });
+    at('quarter');
+    expect(h.$$('.dbar').length).toBe(13);
+    expect(h.$$('.rmrow').length).toBe(1);
+    expect(h.$('.rmleft').textContent).toContain('Plumbline');
+    expect(h.$('.rmleft .pill').textContent).toBe('Milestone');
+  });
+
+  it('the left column reads the current next step, or what it is waiting on', () => {
+    const b = makeGoal(p, { title: 'blocked one', thread: { status: 'blocked', blockedOn: 'Marcus' } });
+    const d = makeGoal(p, { title: 'dormant one', thread: { status: 'dormant' } });
+    d.goal.trigger = 'the offer lands';
+    makeGoal(p, { title: 'stepless one', step: null });
+    makeGoal(p, { title: 'normal one', step: 'the next move' });
+    at('quarter');
+    const text = h.$('.roadmap').textContent;
+    expect(text).toContain('waiting on Marcus');
+    expect(text).toContain('dormant');
+    expect(text).toContain('the offer lands');
+    expect(text).toContain('no next step');
+    expect(text).toContain('the next move');
+    expect(text).toContain('unscheduled');
+  });
+
+  it('a metric goal shows progress against its target', () => {
+    const g = makeGoal(p, { title: 'Saving', type: 'threshold', rel: 'cyclical' });
+    g.goal.smart.target = 9000; g.goal.smart.current = 3150;
+    at('quarter');
+    expect(h.$('.band').textContent).toContain('$3,150 / $9,000');
+    // Preact serialises inline styles as `width: 35%`, the string build as
+    // `width:35%` — same width, different whitespace, so compare normalised.
+    expect(h.$('.band .prog').getAttribute('style').replace(/\s/g, '')).toContain('width:35%');
+  });
+
+  it('scheduled steps become dots and clicking a density bar jumps to that week', () => {
+    const g = makeGoal(p, { title: 'Ship it' });
+    p.CAL.anchor(g.goal, g.thread, g.step, p.addDays(p.today(), 3), 9 * 60, 45);
+    at('quarter');
+    expect(h.$$('.stepdot').length).toBe(1);
+
+    const bar = h.$$('.dbar')[2];
+    const week = bar.dataset.jump;
+    h.click(bar);
+    expect(p.DB.meta.zoom).toBe('week');
+    expect(p.DB.meta.cursor).toBe(week);
+  });
+
+  it('says so when there are no goals', () => {
+    at('quarter');
+    expect(h.$('.roadmap').textContent).toContain('No goals yet');
+  });
+});
+
+describe('escaping [' + TARGET + ']', () => {
+  const HOSTILE = '<img src=x onerror="window.__pwned=1">';
+
+  it('a hostile string renders as text across every view', () => {
+    const g = makeGoal(p, { title: HOSTILE, type: 'milestone', step: HOSTILE });
+    g.goal.trigger = HOSTILE; g.goal.why = HOSTILE;
+    g.thread.blockedOn = HOSTILE;
+    g.step.subs = [p.newSub(HOSTILE)];
+    p.addEvent(p.newEvent({ title: HOSTILE, dateKey: p.today(), start: 9 * 60, dur: 30 }));
+
+    for (const z of ['day', 'week', 'quarter', 'list']){
+      at(z);
+      expect(h.$$('#view img').length, z).toBe(0);
+      expect(h.window.__pwned, z).toBeUndefined();
+      expect(h.$('#view').textContent, z).toContain('onerror');
+    }
+  });
+
+  it('and in the ribbon and the goal editor', () => {
+    const g = makeGoal(p, { title: HOSTILE, step: null });
+    p.render();
+    expect(h.$$('#signals img').length).toBe(0);
+    expect(h.$('#signals').textContent).toContain('onerror');
+
+    p.openGoal(g.goal.id);
+    expect(h.$$('.modal img').length).toBe(0);
+    expect(h.window.__pwned).toBeUndefined();
+  });
+});

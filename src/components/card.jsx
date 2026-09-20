@@ -2,8 +2,12 @@ import { CAL } from '../cal.js';
 import { gDead, gForeign } from '../google.js';
 import { hrs, loadState } from '../budget.js';
 import { fmtTime, nowMin, today } from '../util.js';
-import { CAL_S, CAL_E, calPos } from './card.js';
-import { rev } from '../signals.js';
+import { calPos, CARDSUBS } from './card.js';
+import { QUAD } from '../views/render.jsx';
+import { shortName, subProgress, subs } from '../engine.js';
+import { daysBetween } from '../util.js';
+import { Fragment } from 'preact';
+import { rev, uiRev } from '../signals.js';
 
 /* ---------- the horizontal day strip ----------
    Shared by Day and List. In List it doubles as a drop target: a row dragged onto
@@ -70,6 +74,68 @@ export function DayStrip({ k, drop = false }){
             ))}
           </div>
         : null}
+    </div>
+  );
+}
+
+/* ---------- the shared card ----------
+   Component form of itemCard(). Same markup and the same data attributes, so
+   wireView()'s click router and the drag engine both still find what they look
+   for. The subtask lines are keyed by id, so ticking one patches that line
+   rather than rebuilding the card under the pointer. */
+export function SubLine({ sub, step, thread, goal }){
+  return (
+    <div class={'subline' + (sub.done ? ' done' : '')}
+         data-step={step.id} data-sub={sub.id} data-thread={thread.id} data-goal={goal.id}>
+      <span class={'subchk' + (sub.done ? ' on' : '')} data-act="sub" data-step={step.id} data-sub={sub.id}
+            data-goal={goal.id} data-thread={thread.id}
+            role="checkbox" aria-checked={String(sub.done)} tabIndex="0">{sub.done ? '\u2713' : ''}</span>
+      <span class="x">{sub.title}</span>
+      <span class="grip subgrip" title="Drag onto the calendar to schedule this step">{'\u22EE\u22EE'}</span>
+    </div>
+  );
+}
+
+export function ItemCard({ item }){
+  uiRev.value;
+  const g = item.goal, s = item.step, t = item.thread;
+  const slip = item.dateKey && item.dateKey < today() && !s.done;
+  const sp = subProgress(s);
+  const open = CARDSUBS.has(s.id);
+  const meta = [];
+
+  if (g.type !== 'task') meta.push(
+    <span class="goaltag"><span class="dot" style={'background:' + QUAD[item.quadrant].c} />{shortName(g)}</span>);
+  if (t.name && t.name !== 'Main' && g.threads.length > 1) meta.push(<span class="pill">{t.name}</span>);
+  if (item.ev) meta.push(<span class="pill mono">{item.ev.allDay ? 'all day' : fmtTime(item.ev.start)}</span>);
+  else if (g.type !== 'task') meta.push(
+    <span class="pill" style="border-color:#5a4a24;color:#e8c98a">unscheduled</span>);
+  if (slip) meta.push(
+    <span class="pill" style="border-color:#5a2b2b;color:#f0a6a6">slipped {daysBetween(item.dateKey, today())}d</span>);
+  if (item.blocked) meta.push(
+    <span class="pill" style="border-color:#5a4a24;color:#e8c98a">waiting on {t.blockedOn || '?'}</span>);
+  if (s.auto) meta.push(<span class="pill tiny">auto</span>);
+  if (s.autoScheduled) meta.push(
+    <span class="pill tiny" title="re-booked by cadence when you completed the last one">{'\u21BB'} auto-booked</span>);
+  if (sp.any) meta.push(
+    <span class={'pill tiny subpill' + (sp.done === sp.total ? ' full' : '')} data-act="subs" data-step={s.id}
+          title={(open ? 'Hide' : 'Show') + ' subtasks'}>
+      {sp.done}/{sp.total} {open ? '\u25B2' : '\u25BC'}
+    </span>);
+
+  return (
+    <div class={'card' + (s.done ? ' done' : '')} data-step={s.id} data-thread={t.id} data-goal={g.id}>
+      <div class="qbar" style={'background:' + QUAD[item.quadrant].c} />
+      <div class={'chk' + (s.done ? ' on' : '')} data-act="toggle">{s.done ? '\u2713' : ''}</div>
+      <div class="body">
+        <div class="ttl">{s.title}</div>
+        <div class="meta">{meta.map((m, i) => <Fragment key={i}>{m}</Fragment>)}</div>
+        { sp.any && open &&
+          <div class="cardsubs">
+            {subs(s).map(x => <SubLine key={x.id} sub={x} step={s} thread={t} goal={g} />)}
+          </div> }
+      </div>
+      <div class="grip" title="Drag to another quadrant">{'\u22EE\u22EE'}</div>
     </div>
   );
 }

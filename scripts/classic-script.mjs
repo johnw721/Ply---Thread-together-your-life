@@ -27,6 +27,10 @@ const body = tag[1].replace(/\n?export\s*\{[^}]*\};?\s*$/, '\n');
 try { new Function(body); }
 catch (e) { throw new Error(`${FILE} does not compile as a classic script: ${e.message}`); }
 
-html = html.replace(tag[0], '').replace(/<\/body>/, `<script>${body}</script>\n</body>`);
+/* Replacement FUNCTIONS, not strings. `$&`, `$'` and `$\`` are substitution
+   patterns in a string replacement, and minified Preact is full of `$&&` — which
+   silently spliced `</body>` into the middle of the bundle and produced a file
+   that parsed as HTML and died on the first `<`. */
+html = html.replace(tag[0], () => '').replace(/<\/body>/, () => `<script>${body}</script>\n</body>`);
 fs.writeFileSync(FILE, html);
 console.log(`dist-single/index.html: classic script at end of body, ${html.length / 1024 | 0} kB`);

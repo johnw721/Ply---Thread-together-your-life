@@ -657,7 +657,7 @@ describe('google provider — capacity', ()=>{
 });
 
 /* ======================================================================= */
-describe('google provider — schema 7', ()=>{
+describe('google provider — the mirror schema', ()=>{
 
   it('migrates a schema 6 file forward', ()=>{
     const d={schema:6, goals:[], events:[{id:'e1', title:'x', dateKey:api.today(), start:540, dur:60,
@@ -665,7 +665,7 @@ describe('google provider — schema 7', ()=>{
     const m=api.migrate(d);
     expect(m.ok).toBe(true);
     expect(m.from).toBe(6);
-    expect(d.schema).toBe(7);
+    expect(d.schema).toBe(api.SCHEMA);
     expect(d.events[0].gcal).toBe(null);
     expect(d.meta.google).toEqual({enabled:false, clientId:'', calendarId:'primary', account:null});
     expect(d.meta.gqueue).toEqual([]);
@@ -689,7 +689,7 @@ describe('google provider — schema 7', ()=>{
   });
 
   it('still refuses a file from a newer build', ()=>{
-    const r=api.migrate({schema:8, goals:[]});
+    const r=api.migrate({schema:api.SCHEMA+1, goals:[]});
     expect(r.ok).toBe(false);
     expect(r.msg).toContain('newer version');
   });
@@ -706,7 +706,7 @@ describe('google provider — schema 7', ()=>{
     h.window.Blob = class { constructor(parts){ written=parts.join(''); } };
     api.exportJSON();
     const out=JSON.parse(written);
-    expect(out.schema).toBe(7);
+    expect(out.schema).toBe(api.SCHEMA);
     expect(out.events.length).toBe(1);
     expect(out.events[0].stepId).toBe(step.id);
     expect(written).not.toContain('theirs');
@@ -860,7 +860,7 @@ describe('local provider — unchanged by all of this', ()=>{
     api.exportJSON();
     const out=JSON.parse(written);
     expect(out.events.length).toBe(2);
-    expect(out.schema).toBe(7);
+    expect(out.schema).toBe(api.SCHEMA);
     /* and it round-trips back in */
     const back=JSON.parse(written);
     expect(api.migrate(back).ok).toBe(true);

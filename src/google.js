@@ -1,7 +1,7 @@
 import { SCHEMA } from './schema.js';
 import { ARMED, armLabel } from './components/dialogs.js';
 import { findStep } from './checkin.js';
-import { renderSignals } from './components/ribbon.js';
+import { renderSignals } from './components/ribbon.jsx';
 import { DB, MEMONLY, addEvent, masterEvent, newEvent, save } from './store.js';
 import { $, addDays, dkey, esc, fmtDate, fmtTime, parseKey, toast, today, uid } from './util.js';
 import { render } from './views/render.jsx';

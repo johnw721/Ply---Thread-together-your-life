@@ -2,8 +2,7 @@ import { DB, blankDB, checkpoint, exportJSON, importJSON, initStorageSync, load,
 import { captureHint, doCapture } from './capture.js';
 import { setCK, startCheckin } from './checkin.js';
 import { openConfirm } from './components/dialogs.js';
-import { wireDrag } from './components/drag.js';
-import { closeModal, initModalTrap } from './components/modal.js';
+import { closeModal } from './components/modal.jsx';
 import { initRibbon, setSigOpen } from './components/ribbon.js';
 import { checkinDue } from './engine.js';
 import { initModalRouter, openPrefs } from './goal-editor.js';
@@ -41,7 +40,6 @@ export function bootstrap({ seed: wantSeed = true } = {}){
   });
 
   initStorageSync();
-  initModalTrap();
   initModalRouter();
   initRibbon();
 
@@ -109,7 +107,6 @@ export function bootstrap({ seed: wantSeed = true } = {}){
   window.addEventListener('appinstalled', ()=>{ setInstallEvt(null); DB.meta.installHidden=true; save(); renderInstallBar(); });
 
   render();
-  wireDrag();          // once — #view outlives every render
   /* The provider starts itself if it was left connected: pull on load, then on
      focus and every five minutes. Anything queued from last session goes first. */
   if(gOn()){

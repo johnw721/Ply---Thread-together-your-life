@@ -1,6 +1,6 @@
 import { TYPE } from '../types.js';
 import { CARDSUBS } from '../components/card.js';
-import { DayStrip } from '../components/card.jsx';
+import { DayStrip, SubLine } from '../components/card.jsx';
 import { hushed, subProgress, subs } from '../engine.js';
 import { DB, currentStep, doneGoals, eventById, liveGoals } from '../store.js';
 import { daysBetween, dkey, fmtDateY, fmtFull, relDays, today } from '../util.js';
@@ -42,21 +42,6 @@ export function goalState(g){
   return {k:'ok', sev:'ok', text:ev?relDays(daysBetween(today(),ev.dateKey)):'', thread:t, step:s, ev};
 }
 export const STATE_ORDER={hard:0, warn:1, ok:2, mute:3};
-
-/* One checklist line. Keyed by sub id, so ticking one patches that line rather
-   than rebuilding the list under the pointer. */
-function SubLine({ sub, step, thread, goal }){
-  return (
-    <div class={'subline' + (sub.done ? ' done' : '')}
-         data-step={step.id} data-sub={sub.id} data-thread={thread.id} data-goal={goal.id}>
-      <span class={'subchk' + (sub.done ? ' on' : '')} data-act="sub" data-step={step.id} data-sub={sub.id}
-            data-goal={goal.id} data-thread={thread.id}
-            role="checkbox" aria-checked={String(sub.done)} tabIndex="0">{sub.done ? '✓' : ''}</span>
-      <span class="x">{sub.title}</span>
-      <span class="grip subgrip" title="Drag onto the calendar to schedule this step">{'⋮⋮'}</span>
-    </div>
-  );
-}
 
 function LiveRow({ goal, st }){
   const s = st.step, prog = s ? subProgress(s) : { any: false };

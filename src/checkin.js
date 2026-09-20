@@ -2,7 +2,7 @@ import { TYPE } from './types.js';
 import { bestQuadrant } from './views/quarter.js';
 import { budget, dayBudget, hrs, loadState } from './budget.js';
 import { CAL } from './cal.js';
-import { closeModal, openModal } from './components/modal.js';
+import { closeModal, openModal } from './components/modal.jsx';
 import { HUSH_AT, autoNextTitle, cadenceOf, checkinAgenda, clearGate, completeStep, daysQuiet, firstStepFor, followThrough, itemsOn, learnType, shortName, signals, unscheduledItems } from './engine.js';
 import { openConvert } from './goal-editor.js';
 import { DB, checkpoint, currentStep, finishGoal, lastDoneStep, load, logIt, newStep, save, touchThread } from './store.js';

@@ -1,6 +1,6 @@
 import { PIPELINE_STAGES } from '../types.js';
 import { findStep } from '../checkin.js';
-import { openModal } from './modal.js';
+import { openModal } from './modal.jsx';
 import { addSub } from '../engine.js';
 import { openPrefs, refreshGoal } from '../goal-editor.js';
 import { checkpoint, goalById, newStep, newThread, save, threadById, touchThread } from '../store.js';

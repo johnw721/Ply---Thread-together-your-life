@@ -1,3 +1,25 @@
+import { useEffect } from 'preact/hooks';
+
+/* ---------- useDrag ----------
+   One pointer-drag engine, installed by whoever owns the element the sources
+   live in. The view host calls it; nothing else needs to, because every drag
+   source — a matrix card, a list row, a week chip, a subtask line — is inside
+   #view.
+
+   It stays a single function rather than becoming per-source handlers on
+   purpose. Touch is the reason: the browser owns the gesture until it knows you
+   are not scrolling, so a touch drag has to start on a grip carrying
+   touch-action:none, and the 6px threshold, the Escape cancel and the swallowed
+   click that follows a drop are all properties of the gesture rather than of any
+   one card. Splitting them across sources is how they drift apart. */
+export function useDrag(ref){
+  useEffect(() => {
+    const el = ref && ref.current;
+    if (!el) return;
+    return wireDrag(el);
+  }, [ref]);
+}
+
 import { hrs, loadState } from '../budget.js';
 import { CAL } from '../cal.js';
 import { findStep, suggestTime } from '../checkin.js';
@@ -7,8 +29,7 @@ import { DB, checkpoint, save, touchThread } from '../store.js';
 import { $, el, fmtDate, fmtTime, toast, today } from '../util.js';
 import { QUAD, render } from '../views/render.jsx';
 
-export function wireDrag(){
-  const v=$('#view');
+export function wireDrag(v = $('#view')){
   let drag=null, ghost=null, lastQ=null, moved=false;
 
   /* two kinds of target: a quadrant (re-prioritise) and the calendar strip (schedule) */
@@ -118,10 +139,23 @@ export function wireDrag(){
     // a stale flag would silently eat the next unrelated click instead.
     if(wasDrag && moved){ swallowClick=true; setTimeout(()=>{ swallowClick=false; },350); }
   };
+  const cancel = ()=>end();
+  const onEscape = e=>{ if(e.key==='Escape'&&drag) end(); };
   v.addEventListener('pointerup', drop);
-  v.addEventListener('pointercancel', ()=>end());
-  window.addEventListener('blur', ()=>end());
-  document.addEventListener('keydown', e=>{ if(e.key==='Escape'&&drag) end(); });
+  v.addEventListener('pointercancel', cancel);
+  window.addEventListener('blur', cancel);
+  document.addEventListener('keydown', onEscape);
+
+  /* A teardown, so the hook can detach when the host unmounts. The monolith
+     wired this once at boot and never took it down, which was fine when #view
+     outlived everything; a component has a lifetime. */
+  return () => {
+    end();
+    v.removeEventListener('pointerup', drop);
+    v.removeEventListener('pointercancel', cancel);
+    window.removeEventListener('blur', cancel);
+    document.removeEventListener('keydown', onEscape);
+  };
 }
 export let swallowClick=false;
 /* read-and-clear: a stale flag would silently eat the next unrelated click */

@@ -166,7 +166,8 @@ describe('partial progress moves the quarter bar [' + TARGET + ']', () => {
     step.subs[0].done = true;
     p.DB.meta.zoom = 'quarter'; p.render();
     const band = h.$('.band .prog');
-    expect(band.getAttribute('style')).toContain('width:25%');
+    // whitespace differs between the string build and Preact; the width does not
+    expect(band.getAttribute('style').replace(/\s/g, '')).toContain('width:25%');
   });
 
   it('doneCount counts closed steps across every thread', () => {

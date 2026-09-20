@@ -5,9 +5,10 @@ import { CK, CKROW, CK_MAX, ckAct, ckBack, ckNext, ckSaveProgress, findStep, ren
 import { CAL_E, CAL_S, CARDSUBS, calMinAt, calPos, dayStripHTML, itemCard } from './components/card.js';
 import { ARMED, armConfirm, armLabel, disarm, newInAct, newInHTML, openConfirm, repaintArmed } from './components/dialogs.js';
 import { swallowClick, wireDrag } from './components/drag.js';
-import { FOCUSABLE, RETURN_FOCUS, closeModal, openModal } from './components/modal.js';
+import { FOCUSABLE, RETURN_FOCUS, closeModal, openModal } from './components/modal.jsx';
 import { FIXABLE, sigFixAct, sigResolverHTML } from './components/resolver.js';
-import { SIGALL, SIGFIX, SIGOPEN, SIG_KIND, SIG_MAX, renderSignals, setSigAll, setSigFix, setSigOpen } from './components/ribbon.js';
+import { SIGALL, SIGFIX, SIGOPEN, SIG_KIND, SIG_MAX, setSigAll, setSigFix, setSigOpen } from './components/ribbon.js';
+import { renderSignals } from './components/ribbon.jsx';
 import { DOWS, HUSH_AT, MONTHS, RULES, activeItems, addSub, autoNextTitle, buildGoalFrom, cadenceOf, carrySubs, checkinAgenda, checkinDue, classify, clearGate, completeStep, daysQuiet, firstStepFor, floatSub, followThrough, hushed, itemsOn, lastDowKey, learnType, learnedScore, money, moveItem, openGates, overdueItems, overlap, parseClock, parseMoney, parseWhen, quietLimit, shortName, sigKey, signals, snoozeSignals, sortSubs, streak, subProgress, subs, termsOf, toggleSub, unscheduledItems } from './engine.js';
 import { GEROW, geAct, goalEditorHTML, openConvert, openDefineNext, openEvent, openGoal, openPrefs, ordControls, refreshGoal, saveGoalFields, schedRowHTML, setGerow, subListHTML, toggleStep, uiAct } from './goal-editor.js';
 import { GDONE, GERR, GIS, GSTATE, GTIMER, GTOK, G_BACK_DAYS, G_FWD_DAYS, G_MAXPAGES, G_SCOPE, G_SYNCKEY, gAct, gAdopt, gApply, gCal, gCancel, gChips, gClientId, gConnect, gCursor, gCursorSet, gDead, gDisconnect, gDrop, gEnqueue, gFlush, gForeign, gFromRow, gISO, gLease, gLoadGIS, gMerge, gOn, gOriginOK, gPending, gPrefsHTML, gReadPrefs, gReadTime, gRequestToken, gStart, gStop, gSync, gToRow, gToken, gWinFrom, gWinTo, gapi, gmeta, gqueue, inWindow, setGErr } from './google.js';
@@ -18,11 +19,10 @@ import { seed } from './seed.js';
 import { DB, EXTERNAL, KEY, LEGACY_KEY, MEMONLY, PASS, PENDING, REDO, UNDO, addEvent, addGoal, adoptExternal, blankDB, checkpoint, commitCheckpoint, currentStep, deleteGoal, doneGoals, eventById, eventsOn, exportJSON, findThread, finishGoal, goalById, goals, importJSON, lastDoneStep, liveGoals, load, logIt, masterEvent, migrate, newEvent, newGoal, newStep, newSub, newThread, occurrenceOf, occursOn, paintUndo, redo, removeEvent, reopenGoal, restoreSnapshot, save, setDB, skipOccurrence, threadById, touchThread, undo } from './store.js';
 import { PIPELINE_STAGES, TYPE } from './types.js';
 import { addDays, clamp, daysBetween, dkey, el, esc, fmtDate, fmtDateY, fmtDay, fmtFull, fmtTime, nowMin, parseKey, relDays, startOfWeek, toast, today, uid } from './util.js';
-import { viewDay } from './views/day.js';
 import { goalState, listHidden } from './views/list.jsx';
-import { bestQuadrant, doneCount, partialCount, quarterRange, viewQuarter } from './views/quarter.js';
+import { bestQuadrant, doneCount, partialCount } from './views/quarter.js';
+import { quarterRange } from './views/quarter.jsx';
 import { QUAD, ZOOMS, captureView, lastZoomIdx, render, renderBody, restoreView, wireView } from './views/render.jsx';
-import { viewWeek } from './views/week.js';
 
 /* ---------------------------------------------------------------------------
    The test seam.
@@ -226,9 +226,6 @@ export const API = {
   calMinAt,
   CAL_S,
   CAL_E,
-  viewDay,
-  viewWeek,
-  viewQuarter,
   goalState,
   listHidden,
   quarterRange,

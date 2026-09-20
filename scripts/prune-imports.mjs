@@ -23,9 +23,12 @@ for (const f of FILES){
   const body = src.replace(/^import \{[^}]*\} from '[^']+';$/gm, '');
   let out = src;
   for (const m of src.matchAll(/^import \{ ([^}]+) \} from '([^']+)';$/gm)){
-    const names = m[1].split(',').map(x=>x.trim());
+    const names = m[1].split(',').map(x=>x.trim()).filter(Boolean);
+    /* `render as preactRender` binds the LOCAL name; searching for the whole
+       clause finds nothing and silently drops a live import. */
+    const localOf = n => { const a = /\bas\s+([A-Za-z_$][\w$]*)$/.exec(n); return a ? a[1] : n; };
     const keep = names.filter(n =>
-      new RegExp('(?<![.\\w$])'+n.replace(/\$/g,'\\$')+'(?![\\w$])').test(body));
+      new RegExp('(?<![.\\w$])'+localOf(n).replace(/\$/g,'\\$')+'(?![\\w$])').test(body));
     if (keep.length === names.length) continue;
     removed += names.length - keep.length;
     console.log(`  ${f}: - ${names.filter(n=>!keep.includes(n)).join(', ')}`);
