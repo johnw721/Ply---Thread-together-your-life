@@ -7,12 +7,27 @@ impossible to hold and hard to ignore.
 *A ply is a strand twisted into a thread, a single move in a game tree, and the verb
 for working at something steadily. All three are the app.*
 
-Single file. Open `index.html` in a browser. No build step, no server, no
-dependencies. Data lives in `localStorage` under `ply.v1`; Export/Import JSON is
-in the `⋮` menu. It reaches the network in exactly one case — if you connect Google
-Calendar (see below), which is opt-in and which the `file://` build can't do
-anyway. Data saved when this was called Thread is adopted on first load and
-the old key is left in place as a backup rather than deleted.
+```
+npm install && npm run dev
+```
+
+Data lives in `localStorage` under `ply.v1`; Export/Import JSON is in the `⋮`
+menu. It reaches the network in exactly one case — if you connect Google Calendar
+(see below), which is opt-in and which the offline build can't do anyway. Data
+saved when this was called Thread is adopted on first load and the old key is
+left in place as a backup rather than deleted.
+
+**The single file is still there.** `npm run build` produces two things: `dist/`,
+the normal static site, and `dist-single/index.html` — the whole app inlined into
+one file that opens from `file://` with no server, no build and nothing beside
+it. That was the original premise and it survives the build step; the build just
+means it is now produced rather than hand-maintained. (It is emitted as a classic
+script on purpose: Chrome refuses `type="module"` over `file://`, so a module
+build would open to a blank page.)
+
+The three things that need an https origin — the service worker, the install
+prompt and Google's OAuth — are absent from that file by design, and Ply says so
+rather than failing quietly. Everything else works.
 
 Demo data loads on first run — all nine goal types, a blocked thread, a pending
 branch, a repeating standup, two broken-down steps with subtask checklists, and a
@@ -623,24 +638,102 @@ half-loading it. Unreadable stored data falls back to a clean DB.
   reduced-motion preferences are not.
 - Arm-to-confirm has no visible countdown; the four-second lapse is silent.
 
+## Where things live
+
+```
+index.html              the Vite entry — markup and stylesheet, no logic
+src/
+  main.js               bootstrap(): load, seed, wire, first render
+  store.ts              DB, migrate, save/load, undo/redo, cross-tab sync
+  cal.ts                the CAL adapter — the seam providers implement
+  google.js             the Google Calendar provider behind that seam
+  engine.js             classify, threads/steps/subtasks, completeStep, signals
+  budget.js             the weekly money panel and day capacity
+  checkin.js            the weekly flow
+  views/                day, week, quarter, list, and render()
+  components/           card, modal, dialogs, ribbon, resolver, drag
+  types.ts schema.ts    the goal types and the stored-shape number
+  bus.js                the only way the lower layers reach the UI
+  debug.js              the test seam
+legacy/index.html       the pre-migration monolith, still driven by the suites
+public/                 sw.js, manifest, icons — copied verbatim by the build
+```
+
+Three of those exist to break import cycles rather than to hold behaviour, and
+each was created because a cycle had already caused a bug. A cycle does not fail
+loudly under a bundler: whichever module is entered second sees the other's
+`const` bindings as `undefined`. `schema.ts` exists because `pwa.js` stamps the
+worker URL at module scope and was registering `sw.js?schema=undefined`.
+`types.ts` exists because `migrate()` needs the type table, which made the store
+import the engine. `bus.js` exists because `restoreSnapshot()` calls
+`closeModal()` and `render()`, which made the store import the views that import
+the store — `main.js` supplies those three hooks at boot.
+
+`scripts/` holds the tools that maintain the import graph: `fix-imports` adds
+what a module references and lacks, `prune-imports` removes what it never uses,
+`gen-debug` regenerates the test seam. Run them after moving code between
+modules; `npm run typecheck` and the suites will tell you if they got it wrong.
+
+TypeScript is being adopted file by file rather than all at once. `store.ts`,
+`cal.ts`, `types.ts` and `schema.ts` are converted and fully null-checked; the
+rest is unchecked JavaScript until it is touched. The first thing the types
+caught was `reopenGoal()` stamping a throwaway object on a goal with no threads.
+
 ## Verification
 
-`npm test` — `vitest` + `jsdom`, driving the real `index.html` through
-`test/harness.js`, no page errors.
+```
+npm test          # the migrated src/ tree
+npm run test:legacy   # the same suites against the pre-migration monolith
+npm run typecheck
+npm run build && npm run smoke
+```
 
-**The table below describes the original suites, which are not currently in the
-repo.** They were written against a build that predates `git init` here and have to
-be rebuilt from these descriptions; `test/harness.js` and `test/bridge.js` are the
-rig that will run them, and they boot either the monolith or a migrated `src/` tree
-through one identical API so the same files can prove parity across the migration.
-What *is* in the repo today:
+`vitest` + `jsdom`. **354 assertions pass, identically, against both targets.**
+
+That equivalence is the point rather than a curiosity. `test/harness.js` boots
+either `legacy/index.html` — the last single-file build, kept precisely so this
+is possible — or the modules in `src/`, and hands the suite one identical API
+either way. The suites were written against the monolith and made to pass
+*before* anything moved. While both targets agree, the restructuring provably
+changed no behaviour, and CI fails on the day they stop agreeing.
+
+Two assertions fail on both targets. They are pre-existing, they predate the
+migration, and they are left failing rather than quietly adjusted: a notification
+handed to the service worker when one is registered, and the install hint staying
+dismissed.
 
 | suite | assertions | covers |
 |---|---|---|
+| classifier | 44 | all nine types, gate queueing, ISO/slashed/month-name/relative/weekday date extraction, clock and money, the learned corrections — capped below the heaviest rule, Dice symmetry in both directions, reinforcement, erosion only on a near-identical phrase, and the review gate falling silent only on a tight match |
+| store | 34 | migrate accept/refuse across every schema step, coercion of malformed subs, budgets and filters, the legacy `thread.v1` adoption, unreadable data falling back clean, export→import round trip, undo/redo with no-op checkpoints, multi-save collapse, view state surviving a restore, the 25-deep cap, refusal under a modal, and `storage` adoption with deferral |
+| calendar | 25 | the adapter contract, anchor/re-anchor/unanchor, occurrence expansion, virtual ids, skipping an occurrence and the series head, a zero cadence not looping, the day ceiling with all-day exempt, `suggestDay()` filling the first day with room, and quarter-hour snapping |
+| engine | 40 | a live first step for every type, completeStep per type, the four thread relationships, the conditional refusing to guess, cyclical re-booking including all-day and never into the past, five completions booking exactly five follow-ups, the archive, reopen not returning a dead goal, and follow-through and streaks |
+| signals | 32 | every kind and severity, the escalation ladder at each boundary, hushing at 3× and un-hushing on movement alone, blocked and near-deadline exemptions, snooze not reaching the agenda, ribbon grouping, the five-chip cap and `+n more`, and the fixable set |
+| subtasks | 32 | one level only, last-tick closing the step through the normal path, carry-forward, stable ordering, partial progress not inflating a real metric, the card pill, in-place rename, reorder both ways, and the inline add keeping focus |
+| check-in | 52 | agenda bucketing, the queue cap and deferral, progress persisting, resuming and being discarded when stale, every card's actions end to end, the scheduling stage, and a summary that leads with the week ahead |
 | google provider | 210 | auth state (no client id, connect, scope, the token never reaching `localStorage`, one silent renewal then `stale`, offline vs expired, revoke-and-keep-your-schedule); mapping timed, all-day and pre-expanded recurring events; merged reads; foreign events read-only; a hostile remote title escaped everywhere; create, patch-in-place re-anchor, delete, and a create cancelled before it flushed; unbounded token-minting sync with no `timeMin`, incremental replay, multi-page paging, `410` recovery, window pruning, the leader lease; remote-wins-on-time, Ply-wins-on-step-link, tombstone instead of silent unanchor; the offline queue holding, coalescing, replaying in order and surviving a reload; remote events counted against the day budget and `suggestDay()`; schema 6→7 migration and coercion; export stripping the foreign cache; and the Settings panel's three states |
 | local provider (regression) | 29 | the local path through everything the provider touched: still the default with no network reached, anchor/re-anchor/unanchor purely local, the plain unscheduled wording, one anchor as one undo step, repeats still expanding at read time, and a local export carrying every event |
+| pwa · notifications | 40 | the service-worker guard and what blocks it, the install hint's states, and the three notifications firing once each |
+| **total** | **354** (2 failing, see above) | |
+
+Two gaps the suite found and pinned rather than fixed, since this pass was meant
+to change no behaviour — both carry a `KNOWN GAP` test and are written up in
+`FOLLOW-UPS.md`: on the check-in's `nostep` and `blocked` cards, "actually it's
+blocked" and "unblocked — define next" set the inline row and then render a card
+that has no field for it, so both lead nowhere. The `quiet` card, which is the
+only one that draws the row, works.
+
+What the suites still can't tell you: anything about layout, reflow, or how it
+actually looks. `npm run smoke` boots both built outputs and checks the app comes
+up, which is a different question from whether it looks right.
 
 ### The original suites
+
+**These are not in the repo.** They describe a build that predates `git init`
+here and could not be recovered, only rebuilt from these descriptions — which is
+what the table above is. The counts below are what was claimed; the counts above
+are what exists and runs. They are kept because the descriptions are still the
+best statement of what each area is supposed to guarantee.
 
 | suite | assertions | covers |
 |---|---|---|

@@ -20,8 +20,8 @@ field for it, so they are dead ends:
 The fix is to render the same `CKROW` block in the `nostep` and `blocked` branches, as the
 `quiet` branch already does. Pinned by the two `KNOWN GAP` tests in `checkin.test.js`.
 
-## 2. The README's schema number is stale
+## 2. The README's schema number — fixed
 
-The body text says "Exports carry a `schema` number (currently 5)". The code is at
-`SCHEMA=7` since the Google Calendar work. This is the drift the architecture doc predicted
-a `Schema` type would catch at compile time.
+The body text said "currently 5" while the code was at 6, then 7. It reads 7 now, and
+`Schema` in `src/schema.ts` is a union of the versions this build knows how to read, so
+the next drift is a compile error rather than a documentation one.

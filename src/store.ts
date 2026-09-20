@@ -1,6 +1,11 @@
 import { listHidden } from './views/list.js';
 import { budget } from './budget.js';
 import { SCHEMA } from './schema.js';
+import type { Schema } from './schema.js';
+import type {
+  DB as Database, DateKey, Gate, Goal, GoalType, LogEntry, LogKind,
+  Minutes, PlyEvent, Step, Sub, Thread
+} from './types.js';
 
 import { TYPE } from './types.js';
 
@@ -12,14 +17,17 @@ import { $, addDays, daysBetween, toast, today, uid } from './util.js';
 /* ===================== [SECTION: STORE] ===================== */
 export const KEY='ply.v1';
 export const LEGACY_KEY='thread.v1';   // the app was called Thread until it wasn't
-export let DB = null;
+/* Null for exactly as long as it takes load() to run at boot, and every reader
+   below runs after that. Typing it nullable would put a `!` on several hundred
+   call sites to describe a window that does not exist in practice. */
+export let DB: Database = null as unknown as Database;
 /* undo(), import, the demo seed and "erase everything" all REPLACE the object
    graph rather than mutating it, and an ES module binding can only be assigned
    by the module that owns it. Hence a setter rather than a bare export. */
-export function setDB(d){ DB = d; return DB; }
+export function setDB(d: Database): Database { DB = d; return DB; }
 export let MEMONLY = false;   // set if localStorage is unavailable (sandboxed preview)
 
-export function blankDB(){
+export function blankDB(): Database {
   return {
     v:1, schema:SCHEMA,
     goals:[],
@@ -65,7 +73,12 @@ export function blankDB(){
    `if(!d.goals) throw 0` was the whole of the old import validation, so a file from
    a newer build would half-load and quietly lose whatever it didn't understand.
    Everything entering the app — localStorage or an imported file — comes through here. */
-export function migrate(d){
+/** The one door into the app. `d` is whatever localStorage or an imported file
+    held, so it is deliberately untyped on the way in; on `ok` it has been
+    coerced into a {@link Database}. */
+export type MigrateResult = { ok: true; from: number } | { ok: false; msg: string };
+
+export function migrate(d: any): MigrateResult {
   if(!d || typeof d!=='object' || !Array.isArray(d.goals))
     return {ok:false, msg:'That file is not a Ply export.'};
   const from = d.schema || d.v || 1;
@@ -152,7 +165,7 @@ export function load(){
       if(old!=null){ raw=old; adopted=true; }
     }
     DB = raw ? JSON.parse(raw) : null;
-  }catch(e){ MEMONLY=true; DB=null; }
+  }catch(e){ MEMONLY=true; DB=null as unknown as Database; }
   if(!DB) DB = blankDB();
   const m=migrate(DB);
   if(!m.ok){ DB=blankDB(); toast('Stored data could not be read — starting clean.'); }
@@ -169,7 +182,7 @@ export function load(){
    PASS is null everywhere else on purpose. A cache that outlived the render would
    hand stale answers to anything that mutated the DB and then read back without
    saving, which is a bug waiting to happen rather than a speed-up worth having. */
-export let PASS=null;
+export let PASS: Record<string, any> | null = null;
 /* bus.render() owns the pass. It lives here because pass() does, and because a cache
    that outlived the render would hand stale answers to anything that mutated the
    DB and read back without saving. */
@@ -189,10 +202,15 @@ export function save(){
    lands on the stack if the action actually changed something, so cancelled
    prompts and no-op clicks never leave a dead entry. Commit is deferred to the
    next tick so one action that saves several times is still one undo step. */
-export const UNDO=[], REDO=[], UNDO_MAX=25;
-export let PENDING=null;
+/** A whole-DB snapshot. Undo swaps the object graph, which is why every reader
+    keys off ids — a held reference does not survive a restore. */
+export interface Snapshot { json: string; label: string; }
 
-export function checkpoint(label){
+export const UNDO: Snapshot[] = [], REDO: Snapshot[] = [];
+export const UNDO_MAX = 25;
+export let PENDING: Snapshot | null = null;
+
+export function checkpoint(label?: string){
   if(!DB || PENDING) return;                       // nested calls join the outer action
   PENDING={json:JSON.stringify(DB), label:label||'that change'};
   setTimeout(commitCheckpoint,0);
@@ -206,7 +224,7 @@ export function commitCheckpoint(){
   paintUndo();
 }
 /* view state is this tab's business, not the snapshot's — keep it across a restore */
-export function restoreSnapshot(json){
+export function restoreSnapshot(json: string){
   const view={zoom:DB.meta.zoom, cursor:DB.meta.cursor};
   DB=JSON.parse(json);
   DB.meta.zoom=view.zoom; DB.meta.cursor=view.cursor;
@@ -216,7 +234,7 @@ export function restoreSnapshot(json){
 export function undo(){
   if($('.scrim')){ toast('Close this first, then undo.'); return; }
   if(!UNDO.length){ toast('Nothing to undo.'); return; }
-  const e=UNDO.pop();
+  const e=UNDO.pop()!;
   REDO.push({json:JSON.stringify(DB), label:e.label});
   restoreSnapshot(e.json);
   toast('Undone: '+e.label);
@@ -224,7 +242,7 @@ export function undo(){
 export function redo(){
   if($('.scrim')){ toast('Close this first, then redo.'); return; }
   if(!REDO.length){ toast('Nothing to redo.'); return; }
-  const e=REDO.pop();
+  const e=REDO.pop()!;
   UNDO.push({json:JSON.stringify(DB), label:e.label});
   restoreSnapshot(e.json);
   toast('Redone: '+e.label);
@@ -239,10 +257,10 @@ export function paintUndo(){
 /* ---------- other tabs ----------
    Two tabs each hold their own DB; without this the last save() silently wins.
    The storage event only fires in *other* tabs, so there's no echo to guard against. */
-export let EXTERNAL=null;
+export let EXTERNAL: Database | null = null;
 /* closeModal() takes the deferred update once nothing is mid-edit. */
 export function takeExternal(){ const d=EXTERNAL; EXTERNAL=null; return d; }
-export function adoptExternal(d){
+export function adoptExternal(d: Database){
   const view={zoom:DB.meta.zoom, cursor:DB.meta.cursor};
   DB=d; DB.meta.zoom=view.zoom; DB.meta.cursor=view.cursor;
   UNDO.length=0; REDO.length=0; PENDING=null;   // our snapshots describe a history that no longer exists
@@ -269,36 +287,38 @@ export const liveGoals  = ()=>DB.goals.filter(g=>g.status==='active');
    They're kept and shown, newest first. */
 export const doneGoals  = ()=>DB.goals.filter(g=>g.status==='done')
                     .sort((a,b)=>String(b.doneAt||'').localeCompare(String(a.doneAt||'')));
-export function finishGoal(g,why){
+export function finishGoal(g: Goal, why?: string): void {
   g.status='done'; g.doneAt=new Date().toISOString();
   g.threads.forEach(t=>{ if(t.status!=='done') t.status='done'; });
   logIt('closed',{goalId:g.id, text:why||'completed'});
 }
-export function reopenGoal(g){
+export function reopenGoal(g: Goal): void {
   g.status='active'; g.doneAt=null;
   g.threads.forEach(t=>{ if(t.status==='done') t.status='active'; });
   // a reopened goal must not come back dead — that's the rule everywhere else
   const t=g.threads[0];
   if(t && !currentStep(t)){ const s=firstStepFor(g,t,null); t.steps.push(s||newStep('Next move on '+shortName(g),{auto:true})); }
-  touchThread(t||{});
+  // reopenGoal ran touchThread(t||{}) — on a goal with no threads at all that
+  // stamped a throwaway object and did nothing. The type made it visible.
+  if(t) touchThread(t);
   logIt('reopened',{goalId:g.id, text:g.title});
 }
 export const goalById   = id=>DB.goals.find(g=>g.id===id);
 export function threadById(gid,tid){const g=goalById(gid);return g&&g.threads.find(t=>t.id===tid);}
 export function findThread(tid){for(const g of DB.goals){const t=g.threads.find(x=>x.id===tid);if(t)return{goal:g,thread:t};}return null;}
 export const eventIndex = ()=> pass('evmap',()=>{ const m=new Map(); for(const e of DB.events) m.set(e.id,e); return m; });
-export function eventById(id){
+export function eventById(id: string | null): PlyEvent | null {
   if(!id) return null;
   const i=String(id).indexOf('@');
   if(i<0) return (PASS ? eventIndex().get(id) : DB.events.find(e=>e.id===id)) || null;
   const m=masterEvent(id);
   return m ? occurrenceOf(m, String(id).slice(i+1)) : null;
 }
-export function currentStep(t){ return t.steps.find(s=>!s.done) || null; }
-export function lastDoneStep(t){ const d=t.steps.filter(s=>s.done); return d[d.length-1]||null; }
+export function currentStep(t: Thread): Step | null { return t.steps.find(s=>!s.done) || null; }
+export function lastDoneStep(t: Thread): Step | null { const d=t.steps.filter(s=>s.done); return d[d.length-1]||null; }
 
 /* --- factories --- */
-export function newGoal(o={}){
+export function newGoal(o: Partial<Goal> = {}): Goal {
   return Object.assign({
     id:uid(), title:'', type:'task', status:'active', doneAt:null,
     why:'',                                  // the reason — carried on decision→goal conversion
@@ -314,7 +334,7 @@ export function newGoal(o={}){
     origin:null                              // {fromGoalId, kind:'decision'} on conversion
   }, o);
 }
-export function newThread(o={}){
+export function newThread(o: Partial<Thread> = {}): Thread {
   return Object.assign({
     id:uid(), name:'Main', rel:'sequential',
     status:'active',                         // active | blocked | dormant | done
@@ -323,15 +343,15 @@ export function newThread(o={}){
     steps:[], lastMovement:new Date().toISOString()
   },o);
 }
-export function newStep(title,o={}){
+export function newStep(title: string, o: Partial<Step> = {}): Step {
   return Object.assign({
     id:uid(), title, quadrant:'q2', done:false, doneAt:null,
     eventId:null, outcome:null, createdAt:new Date().toISOString(), auto:false,
     subs:[]            // one level of checklist under a step — see the SUBTASKS section
   },o);
 }
-export function newSub(title){ return {id:uid(), title:String(title||'').trim(), done:false, doneAt:null}; }
-export function newEvent(o={}){
+export function newSub(title: string): Sub { return {id:uid(), title:String(title||'').trim(), done:false, doneAt:null}; }
+export function newEvent(o: Partial<PlyEvent> = {}): PlyEvent {
   return Object.assign({
     id:uid(), title:'', dateKey:today(), start:9*60, dur:60,
     src:'manual', goalId:null, threadId:null, stepId:null,
@@ -345,11 +365,11 @@ export function newEvent(o={}){
 }
 
 /* --- log --- */
-export function logIt(kind, o={}){
+export function logIt(kind: LogKind, o: Partial<LogEntry> = {}): void {
   DB.log.push(Object.assign({id:uid(), ts:new Date().toISOString(), kind}, o));
   if(DB.log.length>4000) DB.log.splice(0, DB.log.length-4000);
 }
-export function touchThread(t){ t.lastMovement = new Date().toISOString(); }
+export function touchThread(t: Thread): void { t.lastMovement = new Date().toISOString(); }
 
 /* --- mutations --- */
 export function addGoal(g){ DB.goals.push(g); logIt('created',{goalId:g.id,text:g.title}); save(); return g; }
@@ -387,7 +407,7 @@ export function skipOccurrence(id){
    manual events repeat — a step anchor is a single commitment by definition, and
    cyclical goals re-anchor themselves in completeStep() instead. That keeps
    activeItems()/signals() untouched: they only ever see real, stored events. */
-export function occursOn(e,k){
+export function occursOn(e: PlyEvent, k: DateKey): boolean {
   if(!e.recur || !e.recur.every) return e.dateKey===k;
   if(k < e.dateKey) return false;
   if(e.recur.until && k > e.recur.until) return false;
@@ -404,7 +424,7 @@ export function masterEvent(id){
   const key = i<0 ? String(id) : String(id).slice(0,i);
   return (PASS ? eventIndex().get(key) : DB.events.find(e=>e.id===key)) || null;
 }
-export function eventsOn(k){
+export function eventsOn(k: DateKey): PlyEvent[] {
   return DB.events.filter(e=>occursOn(e,k)).map(e=>occurrenceOf(e,k)).sort((a,b)=>a.start-b.start);
 }
 
@@ -429,10 +449,10 @@ export function exportJSON(){
 }
 export function importJSON(){
   const inp=document.createElement('input'); inp.type='file'; inp.accept='.json,application/json';
-  inp.onchange=()=>{ const f=inp.files[0]; if(!f)return;
+  inp.onchange=()=>{ const f=inp.files && inp.files[0]; if(!f)return;
     const r=new FileReader();
     r.onload=()=>{
-      let d; try{ d=JSON.parse(r.result); }catch(e){ toast('That file is not valid JSON.'); return; }
+      let d; try{ d=JSON.parse(String(r.result)); }catch(e){ toast('That file is not valid JSON.'); return; }
       const m=migrate(d);
       if(!m.ok){ toast(m.msg); return; }
       checkpoint('that import');

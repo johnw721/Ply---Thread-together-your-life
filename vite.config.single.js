@@ -11,12 +11,25 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
    as additive. */
 export default defineConfig({
   base: './',
+  /* Nothing beside it. The manifest, the icons and the worker are the three
+     things that only mean something over https, and this build is the one that
+     has to survive being emailed to yourself and opened from a Downloads
+     folder. registerSW() already refuses on a file:// origin and says why. */
+  publicDir: false,
   build: {
     outDir: 'dist-single',
     emptyOutDir: true,
     target: 'es2020',
     assetsInlineLimit: 100000000,
-    cssCodeSplit: false
+    cssCodeSplit: false,
+    /* A classic script, not a module. Chrome refuses `type="module"` over
+       file:// — it is a cross-origin fetch there — so a module build would
+       produce a single file that opens to a blank page, which is the one thing
+       this build exists to prevent. IIFE also means jsdom can run it, so
+       scripts/smoke-dist.mjs can prove it boots. */
+    rollupOptions: {
+      output: { inlineDynamicImports: true }
+    }
   },
   plugins: [viteSingleFile()]
 });

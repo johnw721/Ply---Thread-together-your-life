@@ -6,9 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && vite build --config vite.config.single.js",
+    "build": "vite build && npm run build:single",
     "build:multi": "vite build",
-    "build:single": "vite build --config vite.config.single.js",
+    "build:single": "vite build --config vite.config.single.js && node scripts/classic-script.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -17,7 +17,8 @@
     "test:mobile": "node tests/mobile/mobile.js",
     "test:mobile:shots": "node tests/mobile/mobile.js --no-assert",
     "serve": "node tests/mobile/serve.js",
-    "test:both": "npm run test:legacy && npm test"
+    "test:both": "npm run test:legacy && npm test",
+    "smoke": "node scripts/smoke-dist.mjs"
   },
   "devDependencies": {
     "jsdom": "^30.1.0",

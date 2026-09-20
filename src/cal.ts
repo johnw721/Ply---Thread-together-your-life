@@ -1,8 +1,40 @@
+import type { DateKey, Goal, Minutes, PlyEvent, Step, Thread } from './types.js';
 import { GSTATE, gCal, gDead, gEnqueue, gFlush, gNote, gOn } from './google.js';
 import { addEvent, eventsOn, logIt, masterEvent, newEvent, removeEvent, save } from './store.js';
 import { addDays } from './util.js';
 
-export const CAL = {
+/* ---------------------------------------------------------------------------
+   What a calendar provider has to be.
+
+   This is the seam: no view and no engine function touches DB.events directly,
+   so a provider is swappable as long as it satisfies this. The local store and
+   the Google provider both do, and Prompts 1 and 2 were built against it — which
+   is why the shape below is a contract rather than a description of one
+   implementation.
+--------------------------------------------------------------------------- */
+export interface CalendarProvider {
+  /** which provider is answering right now */
+  readonly provider: 'local' | 'google';
+  /** whether Ply may schedule at all — not whether the network is up */
+  readonly writable: boolean;
+  /** whether a write can be delivered now, as opposed to queued */
+  readonly online: boolean;
+
+  /** every occurrence in a range, repeats expanded */
+  list(fromKey: DateKey, toKey: DateKey): PlyEvent[];
+  /** one day, sorted by start */
+  on(k: DateKey): PlyEvent[];
+  /** give a step a slot; returns synchronously, remote writes are queued */
+  anchor(goal: Goal, thread: Thread, step: Step,
+         dateKey: DateKey, start: Minutes, dur?: Minutes): PlyEvent;
+  /** take the slot away again */
+  unanchor(step: Step): void;
+  /** minutes booked that day; all-day items are exempt */
+  loadOn(k: DateKey): Minutes;
+  loadWeek(weekStartKey: DateKey): Minutes;
+}
+
+export const CAL: CalendarProvider = {
   get provider(){ return gOn() ? 'google' : 'local'; },
   /* `writable` says Ply may schedule, not that the network is up. With a remote
      provider configured every write is accepted and queued; `online` is the
@@ -12,7 +44,7 @@ export const CAL = {
   /* range read — no view calls it yet, but it's the shape a remote provider needs
      and it's covered by tests, so it stays as interface rather than being trimmed */
   list(fromKey,toKey){
-    const out=[];
+    const out: PlyEvent[] = [];
     for(let k=fromKey; k<=toKey; k=addDays(k,1)) out.push(...eventsOn(k));   // expands repeats
     return out;
   },

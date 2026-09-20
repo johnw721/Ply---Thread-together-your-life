@@ -1,0 +1,244 @@
+import type { Schema } from './schema.js';
+/* ---------------------------------------------------------------------------
+   The nine goal types, and the pipeline stages.
+
+   Pure data with no dependencies of its own, in its own module because the store
+   needs it during migrate() and the engine needs it everywhere. Left in the
+   engine it would make the store import the engine, and that cycle decides which
+   module sees the other's constants as undefined.
+--------------------------------------------------------------------------- */
+/* Type specs. `gate` = a field that must be explicit; if it's missing the goal is
+   still saved immediately and the question is QUEUED into the next check-in —
+   capture never blocks. `cadence` = default silence window in days. */
+export const TYPE = {
+  deadline:   {label:'Deadline',    gate:'deadline', cadence:4,  rel:'sequential', color:'deadline',
+               metric:'progress toward a fixed date', hint:'Metric climbs toward a fixed date.'},
+  habit:      {label:'Habit',       gate:null,       cadence:3,  rel:'cyclical',   color:'habit',
+               metric:'streak / sessions', hint:'No finish line. Next step is always the next session.'},
+  milestone:  {label:'Milestone',   gate:null,       cadence:10, rel:'sequential', color:'milestone',
+               metric:'features shipped', hint:'Completing a step pulls the next off the backlog.'},
+  threshold:  {label:'Threshold',   gate:null,       cadence:14, rel:'cyclical',   color:'threshold',
+               metric:'cumulative total', hint:'Next step is this period\u2019s contribution.', review:true},
+  maintenance:{label:'Maintenance', gate:null,       cadence:7,  rel:'cyclical',   color:'maintenance',
+               metric:'staying in range', hint:'A gap itself surfaces the goal \u2014 not just the check-in.'},
+  pipeline:   {label:'Pipeline',    gate:null,       cadence:7,  rel:'parallel',   color:'pipeline',
+               metric:'volume + conversion', hint:'Stages: applied \u2192 screen \u2192 interview \u2192 offer.'},
+  contingent: {label:'Contingent',  gate:'trigger',  cadence:0,  rel:'sequential', color:'contingent',
+               metric:'dormant until trigger', hint:'Silent until the trigger fires. Never nags before then.'},
+  decision:   {label:'Decision',    gate:'decision', cadence:14, rel:'sequential', color:'decision',
+               metric:'resolved / not', hint:'Next step is research or decide. Resolves once, then closes or converts.'},
+  task:       {label:'Task',        gate:null,       cadence:0,  rel:'sequential', color:'milestone',
+               metric:null, hint:'No goal wrapper \u2014 just an item in the matrix.'}
+};
+export const PIPELINE_STAGES = ['sourced','applied','screen','interview','offer'];
+
+/* ---------------------------------------------------------------------------
+   The stored shape.
+
+   These are the types the migration starts from, for the reason the architecture
+   note gives: the README said "schema 5" while the code said 6 for long enough
+   that the drift became documentation. A number that only ever means one of a
+   known set, and a goal type that only ever means one of nine, are exactly the
+   two things a compiler should be holding.
+
+   They describe what migrate() GUARANTEES, not what arrives. Anything entering
+   the app — localStorage, an imported file, a Google row — is `unknown` until
+   migrate() has coerced it, which is why migrate() takes `any` and everything
+   downstream takes these.
+--------------------------------------------------------------------------- */
+
+/** A local day, 'YYYY-MM-DD'. Local time, never UTC — see dkey(). */
+export type DateKey = string;
+/** Minutes from midnight. */
+export type Minutes = number;
+/** An ISO timestamp. */
+export type Stamp = string;
+
+/** The nine types, taken from the table above so the two can never drift. */
+export type GoalType = keyof typeof TYPE;
+
+/** How the steps of a thread relate to one another. */
+export type ThreadRel = 'sequential' | 'parallel' | 'conditional' | 'cyclical';
+
+export type ThreadStatus = 'active' | 'blocked' | 'dormant' | 'done';
+export type GoalStatus = 'active' | 'done';
+export type Quadrant = 'q1' | 'q2' | 'q3' | 'q4';
+export type Zoom = 'day' | 'week' | 'quarter' | 'list';
+
+/** A clarifying question capture refused to stop and ask. */
+export type GateKind = 'deadline' | 'trigger' | 'decision' | 'confirm-type' | 'resolve-decision';
+export interface Gate { id: string; kind: GateKind; q: string; }
+
+/** A checklist line under a step. Never a card, never a calendar slot. */
+export interface Sub { id: string; title: string; done: boolean; doneAt: Stamp | null; }
+
+export interface Step {
+  id: string;
+  title: string;
+  quadrant: Quadrant;
+  done: boolean;
+  doneAt: Stamp | null;
+  /** the calendar slot this step is anchored to */
+  eventId: string | null;
+  outcome: string | null;
+  createdAt: Stamp;
+  /** generated by completeStep() rather than named by hand */
+  auto: boolean;
+  /** re-booked by cadence when the previous one was ticked off */
+  autoScheduled?: boolean;
+  subs: Sub[];
+}
+
+export interface Branch { condition: string; next: string; }
+
+export interface Thread {
+  id: string;
+  name: string;
+  rel: ThreadRel;
+  status: ThreadStatus;
+  blockedOn: string;
+  blockedSince: Stamp | null;
+  branches: Branch[];
+  /** conditional threads only: the last step closed and nobody has said which way */
+  needsBranch?: boolean;
+  /** pipeline entries carry their own stage */
+  stage?: string;
+  steps: Step[];
+  /** what silence is measured from; hushed() is computed, never stored */
+  lastMovement: Stamp;
+}
+
+export interface Smart {
+  outcome: string;
+  metricName: string;
+  metricUnit: string;
+  target: number | null;
+  current: number;
+  deadline: DateKey | null;
+  /** a soft deadline never produces a deadline signal */
+  deadlineSoft: boolean;
+}
+
+export interface Goal {
+  id: string;
+  title: string;
+  type: GoalType;
+  status: GoalStatus;
+  /** set by finishGoal(); a completed goal is kept, not hidden */
+  doneAt: Stamp | null;
+  why: string;
+  notes: string;
+  smart: Smart;
+  /** contingent-type: dormant until this fires */
+  trigger: string;
+  /** pipeline-type */
+  stages: string[] | null;
+  /** milestone-type: completing a step pulls the next off here */
+  backlog: string[];
+  /** null = the type's default silence window */
+  cadenceDays: number | null;
+  gates: Gate[];
+  threads: Thread[];
+  createdAt: Stamp;
+  origin: { fromGoalId: string; kind: 'decision' } | null;
+}
+
+export interface Recur { every: number; until: DateKey | null; }
+
+/** The Google mirror on an event. Null on a purely local one. */
+export interface GCal {
+  id: string | null;
+  etag: string | null;
+  updated: Stamp | null;
+  cal: string;
+  /** Ply created it, as opposed to it being a read of someone else's calendar */
+  own: boolean;
+  status: 'confirmed' | 'cancelled';
+  link: string | null;
+  /** written locally, not yet acknowledged remotely */
+  pending?: boolean;
+}
+
+export interface PlyEvent {
+  id: string;
+  title: string;
+  dateKey: DateKey;
+  start: Minutes;
+  dur: Minutes;
+  allDay?: boolean;
+  src: 'manual' | 'google';
+  goalId: string | null;
+  threadId: string | null;
+  stepId: string | null;
+  /** manual events only — a step anchor is a single commitment by definition */
+  recur: Recur | null;
+  /** dates dropped out of the series */
+  skips: DateKey[];
+  gcal: GCal | null;
+  /** set on an occurrence generated at read time, not on the stored master */
+  virtual?: boolean;
+  master?: string;
+  done?: boolean;
+}
+
+export type LogKind =
+  | 'created' | 'planned' | 'done' | 'slipped' | 'blocked' | 'branch'
+  | 'closed' | 'reopened' | 'converted' | 'checkin';
+
+export interface LogEntry {
+  id: string;
+  ts: Stamp;
+  kind: LogKind;
+  goalId?: string;
+  threadId?: string;
+  stepId?: string;
+  text?: string;
+  dateKey?: DateKey;
+}
+
+export interface BudgetCat { id: string; name: string; amount: number; goalId: string | null; }
+export interface Budget { weekly: number; cats: BudgetCat[]; }
+
+/** A type correction the classifier reuses. Scored alongside the rules, never over them. */
+export interface Lesson { terms: string[]; type: GoalType; n: number; }
+
+export interface GoogleSettings {
+  enabled: boolean;
+  /** public by design, not a secret */
+  clientId: string;
+  calendarId: string;
+  account: string | null;
+}
+
+export interface Meta {
+  lastCheckin: DateKey | null;
+  checkinDow: number;
+  checkinMode: 'day' | 'elapsed';
+  checkinEveryDays: number;
+  checkinProgress: { dateKey: DateKey; i: number; touched: number } | null;
+  projects: string[];
+  snoozed: { k: string; until: DateKey }[];
+  learned: Lesson[];
+  dayBudgetMins: number;
+  listHidden: GoalType[];
+  listDone: boolean;
+  budget: Budget;
+  zoom: Zoom;
+  cursor: DateKey | null;
+  google: GoogleSettings;
+  gqueue: unknown[];
+  notify: boolean;
+  notifSent: { k: string; ts: Stamp }[];
+  sigHardSince: Record<string, Stamp>;
+  installHidden: boolean;
+}
+
+/** One object graph, one undo step per action. */
+export interface DB {
+  v: number;
+  schema: Schema;
+  goals: Goal[];
+  events: PlyEvent[];
+  log: LogEntry[];
+  meta: Meta;
+}

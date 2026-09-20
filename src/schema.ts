@@ -9,4 +9,9 @@
 
    Bump it whenever the shape changes; migrate() has to grow a step to match.
 --------------------------------------------------------------------------- */
-export const SCHEMA=7;   // bump whenever the shape changes; migrate() has to grow a step to match
+
+/** Every version this build knows how to read. A file claiming anything else is
+    refused rather than half-loaded — see migrate(). */
+export type Schema = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
+export const SCHEMA: Schema = 7;

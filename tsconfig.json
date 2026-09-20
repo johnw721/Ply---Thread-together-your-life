@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": false,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* Incremental on purpose. The modules that have been converted are fully
+       typed and null-checked; the rest stay as unchecked JavaScript until they
+       are touched. Turning `strict` on globally would mean typing 4,000 lines in
+       one pass, which is the thing this is trying to avoid — but null-safety is
+       where the bugs are, so strictNullChecks is on for the files that have
+       moved, and it has already found one (reopenGoal stamping a throwaway
+       object on a goal with no threads). */
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.js"],
+  "exclude": ["node_modules", "dist", "dist-single", "legacy"]
+}

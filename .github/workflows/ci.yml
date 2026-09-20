@@ -1,0 +1,67 @@
+# -----------------------------------------------------------------------------
+# Ply → CI
+#
+# Every pull request, and every push that is not a deploy. Three things have to
+# hold before a change is reviewable:
+#
+#   1. the types compile
+#   2. the suites pass against the migrated src/ tree
+#   3. the same suites pass against legacy/index.html, the pre-migration
+#      monolith
+#
+# (3) is the unusual one and it is the point. The suites were written to pin the
+# monolith's behaviour before any of it moved, and the harness can drive either
+# target through one interface. While both targets pass, the migration provably
+# changed no behaviour — so a step that breaks parity fails here rather than
+# being found later in the app.
+#
+# The build runs too, and is smoke-tested rather than merely compiled: a bundle
+# that builds and then throws on load is exactly the failure a green `vite build`
+# hides.
+# -----------------------------------------------------------------------------
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Types
+        run: npm run typecheck
+
+      - name: Suites — migrated tree
+        run: npm test
+
+      - name: Suites — pre-migration monolith (parity)
+        run: npm run test:legacy
+
+      - name: Build
+        run: npm run build
+
+      - name: Built output boots
+        run: npm run smoke
+
+      - name: Keep the offline build
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ply-offline
+          path: dist-single/index.html
+          if-no-files-found: error

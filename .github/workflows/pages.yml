@@ -1,0 +1,92 @@
+# -----------------------------------------------------------------------------
+# Ply → GitHub Pages
+#
+# Ply needs an https origin for two things that localhost can fake and file://
+# cannot do at all: registering a service worker, and being an authorised
+# JavaScript origin for the Google OAuth client. Pages gives it one for free and
+# from the same repository the tests run in, so a deploy can't outrun a green
+# suite.
+#
+# The Vite migration has landed, so this now builds and publishes ./dist rather
+# than the repository root. sw.js, manifest.webmanifest and icons/ live in
+# public/ and Vite copies them verbatim, which matters: the worker has to keep
+# its name and its root scope for the registration to control the page.
+# -----------------------------------------------------------------------------
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; a queued run supersedes a waiting one but never
+# cancels a deploy that is already writing.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Types
+        run: npm run typecheck
+      - name: Unit suites against the migrated tree (vitest + jsdom)
+        run: npm test
+      - name: The same suites against the pre-migration monolith
+        run: npm run test:legacy
+      - name: Mobile pass (Playwright, 375x812 and 390x844)
+        run: |
+          npx --yes playwright@1 install --with-deps chromium
+          npm run test:mobile
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-shots
+          path: tests/mobile/shots
+          if-no-files-found: warn
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Prove the built output actually boots
+        run: npm run smoke
+      - name: Stamp the deploy
+        run: |
+          touch dist/.nojekyll
+          cp dist-single/index.html dist/ply-offline.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+      - id: deployment
+        uses: actions/deploy-pages@v4
+      # The deployed URL goes into the run summary, so the origin to paste into
+      # the Google OAuth client is never guessed at.
+      - name: Say where it landed
+        run: |
+          echo "### Ply is live" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Origin: ${{ steps.deployment.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Add that exact origin (no trailing slash) to the OAuth client's" >> $GITHUB_STEP_SUMMARY
+          echo "**Authorized JavaScript origins** before connecting Google Calendar." >> $GITHUB_STEP_SUMMARY
