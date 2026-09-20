@@ -87,6 +87,7 @@ export interface Step {
   /** re-booked by cadence when the previous one was ticked off */
   autoScheduled?: boolean;
   subs: Sub[];
+  updatedAt: Stamp;
 }
 
 export interface Branch { condition: string; next: string; }
@@ -106,6 +107,7 @@ export interface Thread {
   steps: Step[];
   /** what silence is measured from; hushed() is computed, never stored */
   lastMovement: Stamp;
+  updatedAt: Stamp;
 }
 
 export interface Smart {
@@ -140,6 +142,7 @@ export interface Goal {
   gates: Gate[];
   threads: Thread[];
   createdAt: Stamp;
+  updatedAt: Stamp;
   origin: { fromGoalId: string; kind: 'decision' } | null;
 }
 
@@ -179,6 +182,7 @@ export interface PlyEvent {
   virtual?: boolean;
   master?: string;
   done?: boolean;
+  updatedAt: Stamp;
 }
 
 export type LogKind =

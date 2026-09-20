@@ -17,7 +17,7 @@ import { NOTIF_HARD_H, NOTIF_KEEP_DAYS, NOTIF_LEAD_MIN, NOTIF_TICK_MS, NOTIF_TIM
 import { BUILD, INSTALL_EVT, SWREG, SWSTATE, SW_URL, SW_WHY, doInstall, installHint, iosWeb, registerSW, renderInstallBar, setInstallEvt, setSWREG, setSWSTATE, standalone, swBlockedBecause } from './pwa.js';
 import { SCHEMA } from './schema.js';
 import { seed } from './seed.js';
-import { DB, EXTERNAL, KEY, LEGACY_KEY, MEMONLY, PASS, PENDING, REDO, UNDO, addEvent, addGoal, adoptExternal, blankDB, checkpoint, commitCheckpoint, currentStep, deleteGoal, doneGoals, eventById, eventsOn, exportJSON, findThread, finishGoal, goalById, goals, importJSON, lastDoneStep, liveGoals, load, logIt, masterEvent, migrate, newEvent, newGoal, newStep, newSub, newThread, occurrenceOf, occursOn, paintUndo, redo, removeEvent, reopenGoal, restoreSnapshot, save, setDB, skipOccurrence, threadById, touchThread, undo } from './store.js';
+import { DB, EPOCH, EXTERNAL, KEY, LEGACY_KEY, MEMONLY, PASS, PENDING, REDO, SHADOW, STAMP_SKIP, UNDO, addEvent, addGoal, adoptExternal, blankDB, checkpoint, commitCheckpoint, currentStep, deleteGoal, doneGoals, eachRec, eventById, eventsOn, exportJSON, findThread, finishGoal, goalById, goals, importJSON, lastDoneStep, liveGoals, load, logIt, masterEvent, migrate, newEvent, newGoal, newStep, newSub, newThread, occurrenceOf, occursOn, paintUndo, recSig, redo, removeEvent, reopenGoal, restoreSnapshot, save, setDB, shadowReset, skipOccurrence, stampOf, threadById, touchThread, undo } from './store.js';
 import { PIPELINE_STAGES, TYPE } from './types.js';
 import { addDays, clamp, daysBetween, dkey, el, esc, fmtDate, fmtDateY, fmtDay, fmtFull, fmtTime, nowMin, parseKey, relDays, startOfWeek, toast, today, uid } from './util.js';
 import { goalState, listHidden } from './views/list.jsx';
@@ -94,6 +94,12 @@ export const API = {
   newEvent,
   logIt,
   touchThread,
+  EPOCH,
+  stampOf,
+  STAMP_SKIP,
+  recSig,
+  eachRec,
+  shadowReset,
   addGoal,
   deleteGoal,
   addEvent,
@@ -360,6 +366,8 @@ export const API = {
   set INSTALL_EVT(v){ setInstallEvt(v); },
   get NOTIF_TIMER(){ return NOTIF_TIMER; },
   set NOTIF_TIMER(_v){ /* owned by its module; no setter is exported */ },
+  get SHADOW(){ return SHADOW; },
+  set SHADOW(_v){ /* owned by its module; no setter is exported */ },
 };
 
 export default API;

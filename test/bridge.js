@@ -13,6 +13,8 @@ export const BRIDGE_VALUES = [
   'goals','liveGoals','doneGoals','finishGoal','reopenGoal','goalById','threadById','findThread','findStep',
   'eventById','currentStep','lastDoneStep',
   'newGoal','newThread','newStep','newSub','newEvent','logIt','touchThread',
+  // stamp: per-record updatedAt, maintained by save() rather than by call sites
+  'EPOCH','stampOf','STAMP_SKIP','recSig','eachRec','shadowReset','stampUpdated',
   'addGoal','deleteGoal','addEvent','removeEvent','skipOccurrence',
   'occursOn','occurrenceOf','masterEvent','eventsOn','CAL',
   // google provider
@@ -38,7 +40,7 @@ export const BRIDGE_VALUES = [
   'openGates','clearGate','lastDowKey','checkinDue','checkinAgenda','followThrough','streak',
   // views
   'QUAD','ZOOMS','SIG_KIND','SIG_MAX','FIXABLE','captureView','restoreView','render','renderBody',
-  'renderSignals','sigResolverHTML','sigFixAct','itemCard','dayStripHTML','calPos','calMinAt',
+  'renderSignals','scrollStripToNow','sigResolverHTML','sigFixAct','itemCard','dayStripHTML','calPos','calMinAt',
   'CAL_S','CAL_E','viewDay','viewWeek','viewQuarter','viewList','goalState','listHidden',
   'quarterRange','doneCount','partialCount','bestQuadrant','CARDSUBS',
   // check-in
@@ -49,6 +51,13 @@ export const BRIDGE_VALUES = [
   'newInHTML','newInAct','doCapture','captureHint','wireView','wireDrag',
   'toggleStep','openDefineNext','openEvent','openConvert','openGoal','refreshGoal',
   'ordControls','schedRowHTML','subListHTML','goalEditorHTML','saveGoalFields','uiAct','geAct','openPrefs',
+  // pwa: the service-worker guard, the install hint, and local notifications
+  'BUILD','SW_URL','SW_WHY','swBlockedBecause','registerSW',
+  'standalone','iosWeb','installHint','renderInstallBar','doInstall','plyGoTo','installPrefsHTML',
+  'NOTIF_LEAD_MIN','NOTIF_HARD_H','NOTIF_WINDOW_MIN','NOTIF_TICK_MS','NOTIF_KEEP_DAYS',
+  'notifSupported','notifPerm','notifWanted','notifOn','notifTrackHard',
+  'notifSentList','notifAlreadySent','notifMark','notifPlan','notifShow','notifTick',
+  'notifStart','notifStop','notifEnable','notifDisable','notifPrefsHTML',
   // seed
   'seed'
 ];
@@ -57,7 +66,8 @@ export const BRIDGE_VALUES = [
 export const BRIDGE_ACCESSORS = [
   'DB','PASS','MEMONLY','EXTERNAL','UNDO','REDO','PENDING',
   'GTOK','GSTATE','GERR','GIS','GTIMER','GDONE',
-  'CK','CKROW','SIGOPEN','SIGALL','SIGFIX','ARMED','GEROW','RETURN_FOCUS','swallowClick','lastZoomIdx'
+  'CK','CKROW','SIGOPEN','SIGALL','SIGFIX','ARMED','GEROW','RETURN_FOCUS','swallowClick','lastZoomIdx',
+  'SWREG','SWSTATE','INSTALL_EVT','NOTIF_TIMER','SHADOW'
 ];
 
 /* The script text appended to the legacy document. Classic scripts share one global

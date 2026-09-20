@@ -25,8 +25,85 @@ export let DB: Database = null as unknown as Database;
 /* undo(), import, the demo seed and "erase everything" all REPLACE the object
    graph rather than mutating it, and an ES module binding can only be assigned
    by the module that owns it. Hence a setter rather than a bare export. */
-export function setDB(d: Database): Database { DB = d; bumpRev(); return DB; }
+export function setDB(d: Database): Database {
+  DB = d;
+  if(!DB.meta.cursor) DB.meta.cursor = today();
+  shadowReset();
+  bumpRev();
+  return DB;
+}
 export let MEMONLY = false;   // set if localStorage is unavailable (sandboxed preview)
+
+/* ---------- per-record updatedAt ----------
+   Every goal, thread, step and event carries a stamp, maintained by save() rather
+   than by call sites — a missed stamp at a mutation site is a silent failure mode,
+   since the record just loses every cross-device merge and the other copy quietly
+   wins. save() diffs the current tree against a shadow of what it looked like at
+   the last save and stamps only what actually changed; subs ride with their step
+   (a sub is not its own record) and a stamp never cascades upward from a step to
+   its thread or goal. */
+export const EPOCH = '1970-01-01T00:00:00.000Z';   // the floor for an unrecoverable age
+/** Kinds walked for stamping. A sub is deliberately not one — see eachRec(). */
+export const STAMP_SKIP = ['log','meta'];
+export function stampOf(rec: any): string | undefined { return rec ? rec.updatedAt : undefined; }
+
+type RecKind = 'goal' | 'thread' | 'step' | 'event';
+/** Every stampable record in the tree, depth-first: goal, its threads, each
+    thread's steps, then every event. Shared by save()'s diff and by
+    shadowReset(), so there is exactly one definition of "a record" to merge. */
+export function eachRec(d: Database): {id: string; rec: any; kind: RecKind}[] {
+  const out: {id: string; rec: any; kind: RecKind}[] = [];
+  for(const g of d.goals){
+    out.push({id:g.id, rec:g, kind:'goal'});
+    for(const t of g.threads){
+      out.push({id:t.id, rec:t, kind:'thread'});
+      for(const s of t.steps) out.push({id:s.id, rec:s, kind:'step'});
+    }
+  }
+  for(const e of d.events) out.push({id:e.id, rec:e, kind:'event'});
+  return out;
+}
+/** A record's own-fields signature — never its `updatedAt` (or comparing it to
+    itself would drift on every save) and never a child collection (a goal's
+    `threads`, a thread's `steps` — those are separate records with their own
+    stamps). A step's `subs` DO count: a sub isn't a record of its own, so its
+    change has to show up as its step's. */
+export function recSig(rec: any, kind: RecKind): string {
+  const {updatedAt, ...rest} = rec;
+  if(kind==='goal'){ const {threads, ...r} = rest; return JSON.stringify(r); }
+  if(kind==='thread'){ const {steps, ...r} = rest; return JSON.stringify(r); }
+  return JSON.stringify(rest);   // step (subs included) and event carry no children
+}
+/** What save() compared the tree against last time. Reset — not incrementally
+    updated — whenever DB is replaced wholesale by something whose own stamps are
+    the truth (load, import, adopting another writer's copy): that makes the
+    replacement a new baseline rather than a pile of "changes" against the old
+    one. Undo/redo deliberately do NOT reset it — a revert is itself a write, and
+    should be stamped as one. */
+export let SHADOW: Map<string,string> = new Map();
+export function shadowReset(){
+  const m = new Map<string,string>();
+  for(const {id, rec, kind} of eachRec(DB)) m.set(id, recSig(rec, kind));
+  SHADOW = m;
+}
+/** Stamps every record whose signature moved since the last save, or whose
+    `updatedAt` is still EPOCH — a record can reach save() sitting at EPOCH from a
+    migration that had nothing to backfill it from, and that is itself worth
+    fixing the moment there is a real save to hang a real timestamp on. Nothing
+    else is touched, so an unrelated goal's stamp never moves just because
+    something else in the tree did. */
+function stampChanged(){
+  const prev = SHADOW;
+  const next = new Map<string,string>();
+  const now = new Date().toISOString();
+  for(const {id, rec, kind} of eachRec(DB)){
+    const sig = recSig(rec, kind);
+    if(!prev.has(id) || prev.get(id)!==sig || rec.updatedAt===EPOCH) rec.updatedAt = now;
+    next.set(id, sig);
+  }
+  SHADOW = next;
+}
+
 
 export function blankDB(): Database {
   return {
@@ -113,6 +190,17 @@ export function migrate(d: any): MigrateResult {
     d.meta.gqueue = d.meta.gqueue || [];
   }
 
+  if(from < 8){                                   // 7 -> 8: per-record updatedAt, maintained by save()
+    for(const g of d.goals){
+      if(!('updatedAt' in g)) g.updatedAt = g.createdAt || EPOCH;
+      for(const t of (g.threads||[])){
+        if(!('updatedAt' in t)) t.updatedAt = t.lastMovement || EPOCH;
+        for(const s of (t.steps||[])) if(!('updatedAt' in s)) s.updatedAt = s.createdAt || EPOCH;
+      }
+    }
+    for(const e of (d.events||[])) if(!('updatedAt' in e)) e.updatedAt = (e.gcal && e.gcal.updated) || EPOCH;
+  }
+
   /* The mirror fields have to hold whatever the file claimed: a row with a broken
      gcal object would be treated as remote and then fail every write against it. */
   for(const e of (d.events||[])){
@@ -124,6 +212,18 @@ export function migrate(d: any): MigrateResult {
       : null;
     if(!e.gcal && e.src==='google') e.src='manual';   // a remote row with no remote id isn't one
   }
+
+  // whatever the file claimed for updatedAt must be a real ISO string, or a merge
+  // reads it as newer/older than it is; unrecoverable floors at EPOCH
+  const validStamp = v => typeof v==='string' && !isNaN(Date.parse(v));
+  for(const g of d.goals){
+    if(!validStamp(g.updatedAt)) g.updatedAt = EPOCH;
+    for(const t of (g.threads||[])){
+      if(!validStamp(t.updatedAt)) t.updatedAt = EPOCH;
+      for(const s of (t.steps||[])) if(!validStamp(s.updatedAt)) s.updatedAt = EPOCH;
+    }
+  }
+  for(const e of (d.events||[])) if(!validStamp(e.updatedAt)) e.updatedAt = EPOCH;
   d.meta.google = (d.meta.google && typeof d.meta.google==='object') ? d.meta.google : b.meta.google;
   d.meta.google = {
     enabled:!!d.meta.google.enabled,
@@ -172,6 +272,7 @@ export function load(){
   if(!m.ok){ DB=blankDB(); toast('Stored data could not be read — starting clean.'); }
   if(!DB.meta.cursor) DB.meta.cursor = today();
   DB.meta.snoozed = (DB.meta.snoozed||[]).filter(x=>x && x.until > today());   // expired snoozes drop off
+  shadowReset();
   if(adopted){ save(); toast('Carried your data over from Thread.'); }
   return DB;
 }
@@ -192,6 +293,7 @@ export function endPass(){ PASS=null; }
 export const pass=(k,fn)=> PASS ? ((k in PASS) ? PASS[k] : (PASS[k]=fn())) : fn();
 
 export function save(){
+  stampChanged();
   commitCheckpoint();
   bumpRev();                       // every computed read is stale from here
   if(MEMONLY) return;
@@ -230,6 +332,7 @@ export function restoreSnapshot(json: string){
   const view={zoom:DB.meta.zoom, cursor:DB.meta.cursor};
   DB=JSON.parse(json);
   DB.meta.zoom=view.zoom; DB.meta.cursor=view.cursor;
+  if(!DB.meta.cursor) DB.meta.cursor = today();
   PENDING=null;
   save(); bus.closeModal(); bus.resetTransientUI(); bus.render();
 }
@@ -265,7 +368,9 @@ export function takeExternal(){ const d=EXTERNAL; EXTERNAL=null; return d; }
 export function adoptExternal(d: Database){
   const view={zoom:DB.meta.zoom, cursor:DB.meta.cursor};
   DB=d; DB.meta.zoom=view.zoom; DB.meta.cursor=view.cursor;
+  if(!DB.meta.cursor) DB.meta.cursor = today();
   UNDO.length=0; REDO.length=0; PENDING=null;   // our snapshots describe a history that no longer exists
+  shadowReset();                 // their stamps are authoritative — not our own change
   paintUndo(); bus.resetTransientUI(); bus.render();          // no save() — that would bounce the write back
   toast('Refreshed — another tab changed something.');
 }
@@ -333,6 +438,7 @@ export function newGoal(o: Partial<Goal> = {}): Goal {
     gates:[],                                // queued clarifying questions -> resolved in check-in
     threads:[],
     createdAt:new Date().toISOString(),
+    updatedAt:new Date().toISOString(),
     origin:null                              // {fromGoalId, kind:'decision'} on conversion
   }, o);
 }
@@ -342,13 +448,13 @@ export function newThread(o: Partial<Thread> = {}): Thread {
     status:'active',                         // active | blocked | dormant | done
     blockedOn:'', blockedSince:null,
     branches:[],                             // conditional: [{condition, next}]
-    steps:[], lastMovement:new Date().toISOString()
+    steps:[], lastMovement:new Date().toISOString(), updatedAt:new Date().toISOString()
   },o);
 }
 export function newStep(title: string, o: Partial<Step> = {}): Step {
   return Object.assign({
     id:uid(), title, quadrant:'q2', done:false, doneAt:null,
-    eventId:null, outcome:null, createdAt:new Date().toISOString(), auto:false,
+    eventId:null, outcome:null, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString(), auto:false,
     subs:[]            // one level of checklist under a step — see the SUBTASKS section
   },o);
 }
@@ -362,7 +468,8 @@ export function newEvent(o: Partial<PlyEvent> = {}): PlyEvent {
     /* the Google mirror. null on a purely local event; on a synced one it carries
        the remote id that makes undo, cross-tab sync and offline capacity work
        without the network being there. See the GOOGLE section. */
-    gcal:null      // {id,etag,updated,cal,own,status,link,pending}
+    gcal:null,     // {id,etag,updated,cal,own,status,link,pending}
+    updatedAt:new Date().toISOString()
   },o);
 }
 

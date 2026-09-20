@@ -10,7 +10,11 @@ export function el(html){const t=document.createElement('template');t.innerHTML=
 
 // --- dates: everything internal is ISO. Day keys are 'YYYY-MM-DD' in LOCAL time.
 export function dkey(d){const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');}
-export function parseKey(k){const [y,m,d]=k.split('-').map(Number);return new Date(y,m-1,d);}
+const DAY_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+export function parseKey(k){
+  if(typeof k!=='string' || !DAY_KEY_RE.test(k)) k=today();
+  const [y,m,d]=k.split('-').map(Number);return new Date(y,m-1,d);
+}
 export function today(){return dkey(new Date());}
 export function addDays(k,n){const d=parseKey(k);d.setDate(d.getDate()+n);return dkey(d);}
 export function daysBetween(a,b){return Math.round((parseKey(b)-parseKey(a))/DAY_MS);}

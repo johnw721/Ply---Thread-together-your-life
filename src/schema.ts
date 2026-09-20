@@ -12,6 +12,6 @@
 
 /** Every version this build knows how to read. A file claiming anything else is
     refused rather than half-loaded — see migrate(). */
-export type Schema = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type Schema = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
-export const SCHEMA: Schema = 7;
+export const SCHEMA: Schema = 8;
