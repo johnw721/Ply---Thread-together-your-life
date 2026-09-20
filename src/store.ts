@@ -1,4 +1,4 @@
-import { listHidden } from './views/list.js';
+import { listHidden } from './views/list.jsx';
 import { budget } from './budget.js';
 import { SCHEMA } from './schema.js';
 import type { Schema } from './schema.js';
@@ -12,6 +12,7 @@ import { TYPE } from './types.js';
 import { firstStepFor, shortName, subs } from './engine.js';
 import { gEnqueue, gqueue } from './google.js';
 import { bus } from './bus.js';
+import { bumpRev } from './signals.js';
 import { $, addDays, daysBetween, toast, today, uid } from './util.js';
 
 /* ===================== [SECTION: STORE] ===================== */
@@ -24,7 +25,7 @@ export let DB: Database = null as unknown as Database;
 /* undo(), import, the demo seed and "erase everything" all REPLACE the object
    graph rather than mutating it, and an ES module binding can only be assigned
    by the module that owns it. Hence a setter rather than a bare export. */
-export function setDB(d: Database): Database { DB = d; return DB; }
+export function setDB(d: Database): Database { DB = d; bumpRev(); return DB; }
 export let MEMONLY = false;   // set if localStorage is unavailable (sandboxed preview)
 
 export function blankDB(): Database {
@@ -192,6 +193,7 @@ export const pass=(k,fn)=> PASS ? ((k in PASS) ? PASS[k] : (PASS[k]=fn())) : fn(
 
 export function save(){
   commitCheckpoint();
+  bumpRev();                       // every computed read is stale from here
   if(MEMONLY) return;
   try{ localStorage.setItem(KEY, JSON.stringify(DB)); }
   catch(e){ MEMONLY=true; toast('Storage unavailable — session only. Use Export to keep data.'); }

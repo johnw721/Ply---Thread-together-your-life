@@ -1,5 +1,5 @@
 import { TYPE } from '../types.js';
-import { QUAD } from './render.js';
+import { QUAD } from './render.jsx';
 import { CAL } from '../cal.js';
 import { money, shortName, subProgress } from '../engine.js';
 import { DB, currentStep, eventById, liveGoals } from '../store.js';

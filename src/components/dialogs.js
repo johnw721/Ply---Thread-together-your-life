@@ -5,7 +5,7 @@ import { addSub } from '../engine.js';
 import { openPrefs, refreshGoal } from '../goal-editor.js';
 import { checkpoint, goalById, newStep, newThread, save, threadById, touchThread } from '../store.js';
 import { $, el, esc } from '../util.js';
-import { render } from '../views/render.js';
+import { render } from '../views/render.jsx';
 
 /* ===================== [SECTION: DIALOGS] =====================
    Native prompt() and confirm() block the whole page, can't be styled, can't carry

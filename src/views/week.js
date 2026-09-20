@@ -1,4 +1,4 @@
-import { QUAD } from './render.js';
+import { QUAD } from './render.jsx';
 import { hrs, loadBar, loadState, viewBudget } from '../budget.js';
 import { CAL } from '../cal.js';
 import { itemCard } from '../components/card.js';

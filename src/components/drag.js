@@ -5,7 +5,7 @@ import { calMinAt, calPos } from './card.js';
 import { floatSub, subs } from '../engine.js';
 import { DB, checkpoint, save, touchThread } from '../store.js';
 import { $, el, fmtDate, fmtTime, toast, today } from '../util.js';
-import { QUAD, render } from '../views/render.js';
+import { QUAD, render } from '../views/render.jsx';
 
 export function wireDrag(){
   const v=$('#view');

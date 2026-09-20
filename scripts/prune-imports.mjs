@@ -12,8 +12,10 @@
    mattered (the type table, the schema number, the store reaching the UI) are
    broken structurally instead, in types.js, schema.js and bus.js. */
 import fs from 'node:fs';
+const EXT = /\.(js|jsx|ts|tsx)$/;
 
-const FILES = fs.readdirSync('src',{recursive:true}).filter(f=>f.endsWith('.js')).map(f=>'src/'+f);
+
+const FILES = fs.readdirSync('src',{recursive:true}).filter(f=>EXT.test(f)).map(f=>'src/'+f);
 let removed = 0;
 for (const f of FILES){
   if (f === 'src/debug.js' || f === 'src/bus.js') continue;

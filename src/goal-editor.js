@@ -11,7 +11,7 @@ import { installPrefsHTML, notifDisable, notifEnable, notifPrefsHTML, notifWante
 import { doInstall, renderInstallBar } from './pwa.js';
 import { DB, MEMONLY, addEvent, addGoal, checkpoint, currentStep, deleteGoal, eventById, finishGoal, goalById, logIt, masterEvent, newEvent, newStep, newThread, removeEvent, save, skipOccurrence, threadById, touchThread } from './store.js';
 import { $, $$, dkey, el, esc, fmtDate, fmtFull, fmtTime, toast, today, uid } from './util.js';
-import { QUAD, render } from './views/render.js';
+import { QUAD, render } from './views/render.jsx';
 
 export function toggleStep(gid,tid,sid){
   const f=findStep(sid); if(!f) return;

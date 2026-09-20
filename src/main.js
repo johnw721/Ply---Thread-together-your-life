@@ -12,7 +12,7 @@ import { notifOn, notifStart, notifTick, plyGoTo } from './notify.js';
 import { registerSW, renderInstallBar, setInstallEvt } from './pwa.js';
 import { seed } from './seed.js';
 import { $, el, toast, today } from './util.js';
-import { render } from './views/render.js';
+import { render } from './views/render.jsx';
 import { API } from './debug.js';
 import { wireBus } from './bus.js';
 

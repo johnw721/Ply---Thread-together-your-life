@@ -5,9 +5,11 @@
    can reference a name the module never imported. This closes that gap, and is
    safe to re-run. */
 import fs from 'node:fs';
+const EXT = /\.(js|jsx|ts|tsx)$/;
+
 import path from 'node:path';
 
-const FILES = fs.readdirSync('src',{recursive:true}).filter(f=>f.endsWith('.js')).map(f=>'src/'+f);
+const FILES = fs.readdirSync('src',{recursive:true}).filter(f=>EXT.test(f)).map(f=>'src/'+f);
 
 import { strip } from './_strip.mjs';
 
@@ -29,13 +31,15 @@ for (const f of FILES){
 }
 
 const rel = (from,to) => {
-  let p = path.relative(path.dirname(from), to).split(path.sep).join('/');
+  /* A .ts module is imported by its .js specifier — that is what `moduleResolution:
+     bundler` and Vite both expect. A .jsx one is imported as .jsx. */
+  let p = path.relative(path.dirname(from), to).split(path.sep).join('/').replace(/\.ts$/, '.js');
   return p.startsWith('.') ? p : './'+p;
 };
 
 let touched = 0;
 for (const f of FILES){
-  if (f === 'src/debug.js' || f === 'src/bus.js') continue;
+  if (f === 'src/debug.js' || f === 'src/bus.js' || f === 'src/types.ts') continue;
   let src = fs.readFileSync(f,'utf8');
   const have = new Set();
   for (const m of src.matchAll(/^import \{ ([^}]+) \} from/gm))

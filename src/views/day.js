@@ -2,7 +2,7 @@ import { dayStripHTML, itemCard } from '../components/card.js';
 import { activeItems, itemsOn, overdueItems, unscheduledItems } from '../engine.js';
 import { DB } from '../store.js';
 import { fmtDate, fmtFull, today } from '../util.js';
-import { QUAD } from './render.js';
+import { QUAD } from './render.jsx';
 
 /* ================= DAY ================= */
 export function viewDay(){

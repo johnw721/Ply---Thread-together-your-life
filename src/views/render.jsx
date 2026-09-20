@@ -1,3 +1,6 @@
+import { bumpUi } from '../signals.js';
+import { render as preactRender } from 'preact';
+import { ListView } from './list.jsx';
 import { budAct, commitBudget, paintBudget } from '../budget.js';
 import { CARDSUBS } from '../components/card.js';
 import { consumeSwallowClick } from '../components/drag.js';
@@ -8,7 +11,7 @@ import { renderInstallBar } from '../pwa.js';
 import { DB, beginPass, checkpoint, endPass, eventById, goalById, paintUndo, reopenGoal, save, threadById } from '../store.js';
 import { $, $$, addDays, el, toast, today } from '../util.js';
 import { viewDay } from './day.js';
-import { listHidden, viewList } from './list.js';
+import { listHidden, viewList } from './list.jsx';
 import { viewQuarter } from './quarter.js';
 import { viewWeek } from './week.js';
 
@@ -54,19 +57,20 @@ export function restoreView(st){
 }
 
 export function render(){
+  bumpUi();                      // components subscribe to this; see src/signals.js
   beginPass();                   // one computation of the shared reads, this pass only
   try{ renderBody(); }finally{ endPass(); }
 }
 export function renderBody(){
-  const keep=captureView();
   const z=DB.meta.zoom;
+  const keep = isComponentView(z) ? null : captureView();
   $$('#zoombar button').forEach(b=>b.classList.toggle('on',b.dataset.z===z));
   const idx=ZOOMS.indexOf(z);
   const dir = idx>lastZoomIdx ? 'zout' : idx<lastZoomIdx ? 'zin' : '';
   lastZoomIdx=idx;
   const v=$('#view');
   v.className=dir;
-  v.innerHTML = z==='day'?viewDay(): z==='week'?viewWeek(): z==='list'?viewList(): viewQuarter();
+  mountView(v, z);
   renderSignals();
   const due=checkinDue(); const b=$('#checkinBadge');
   const ag=checkinAgenda(); const n=ag.gates.length+ag.quiet.length+ag.nostep.length+ag.branch.length;
@@ -76,7 +80,34 @@ export function renderBody(){
   paintUndo();
   renderInstallBar();
   wireView();
-  restoreView(keep);
+  if(keep) restoreView(keep);
+}
+
+/* ---------- one view at a time ----------
+   Views are being converted to components one by one, so at any point in the
+   migration #view may be owned by Preact or by a string. Both are supported
+   here rather than in four places, and the handover is explicit: unmounting
+   before writing innerHTML, and clearing innerHTML before mounting, because
+   leaving one to overwrite the other's DOM is how a component ends up patching
+   nodes that are no longer on the page.
+
+   A converted view also skips captureView()/restoreView(). It does not need
+   them: Preact patches the rows that changed instead of replacing the subtree,
+   so the scroll position and the caret were never lost in the first place. */
+const COMPONENTS = { list: ListView };
+let mounted = null;                       // which zoom Preact currently owns
+
+export function isComponentView(z){ return !!COMPONENTS[z]; }
+
+function mountView(v, z){
+  const Component = COMPONENTS[z];
+  if (Component){
+    if (mounted !== z){ v.innerHTML=''; mounted = z; }
+    preactRender(<Component />, v);
+    return;
+  }
+  if (mounted){ preactRender(null, v); mounted = null; v.innerHTML=''; }
+  v.innerHTML = z==='day'?viewDay(): z==='week'?viewWeek(): viewQuarter();
 }
 
 /* ---------- signal ribbon ----------

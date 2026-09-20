@@ -7,7 +7,7 @@ import { autoNextTitle, clearGate, firstStepFor, learnType, shortName, signals }
 import { openGoal } from '../goal-editor.js';
 import { checkpoint, currentStep, deleteGoal, newStep, save, touchThread } from '../store.js';
 import { $, addDays, esc, toast, today, uid } from '../util.js';
-import { QUAD, render } from '../views/render.js';
+import { QUAD, render } from '../views/render.jsx';
 
 export const FIXABLE=new Set(['gate','nostep','unscheduled','slipped','branch','blocked','hushed']);
 

@@ -7,7 +7,7 @@ import { HUSH_AT, autoNextTitle, cadenceOf, checkinAgenda, clearGate, completeSt
 import { openConvert } from './goal-editor.js';
 import { DB, checkpoint, currentStep, finishGoal, lastDoneStep, load, logIt, newStep, save, touchThread } from './store.js';
 import { $, $$, addDays, daysBetween, dkey, esc, fmtDate, fmtDay, fmtTime, toast, today, uid } from './util.js';
-import { QUAD, render } from './views/render.js';
+import { QUAD, render } from './views/render.jsx';
 
 /* ===================== [SECTION: CHECKIN] ===================== */
 /* A guided flow, not a dashboard. It walks you card by card and will not let a

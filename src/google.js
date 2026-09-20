@@ -4,7 +4,7 @@ import { findStep } from './checkin.js';
 import { renderSignals } from './components/ribbon.js';
 import { DB, MEMONLY, addEvent, masterEvent, newEvent, save } from './store.js';
 import { $, addDays, dkey, esc, fmtDate, fmtTime, parseKey, toast, today, uid } from './util.js';
-import { render } from './views/render.js';
+import { render } from './views/render.jsx';
 
 /* ===================== [SECTION: GOOGLE] =====================
    A second CAL provider. One decision drives everything else here: Google is a

@@ -1,4 +1,4 @@
-import { QUAD } from '../views/render.js';
+import { QUAD } from '../views/render.jsx';
 import { gDead, gForeign } from '../google.js';
 import { hrs, loadBar, loadState } from '../budget.js';
 import { CAL } from '../cal.js';

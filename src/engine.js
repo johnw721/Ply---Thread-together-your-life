@@ -342,7 +342,12 @@ export function autoNextTitle(g,t,prev){
 export function money(n){ return '$'+Number(n).toLocaleString(); }
 
 /* ---- item stream: current steps + tasks, in one shape the views can render ---- */
-export function activeItems(){ return pass('items', _activeItems); }
+/* No longer memoised per render pass. The cache existed because nothing knew
+   when the DB changed, which is why it had to be null outside render() — it
+   would otherwise hand stale answers to anything that mutated and read back
+   without saving. Components read activeItemsC in src/signals.js instead, which
+   recomputes on change rather than on a pass boundary. */
+export function activeItems(){ return _activeItems(); }
 export function _activeItems(){
   const out=[];
   for(const g of liveGoals()){
@@ -387,7 +392,8 @@ export const GATE_SHORT={ deadline:'Needs a hard date', trigger:'Needs a trigger
   decision:'A decision, or a goal?', 'confirm-type':'Confirm the type',
   'resolve-decision':'Decision needs resolving' };
 
-export function signals(){ return pass('signals', _signals); }
+/* See activeItems(): uncached here, computed for components in src/signals.js. */
+export function signals(){ return _signals(); }
 export function _signals(){
   const out=[]; const T=today();
   for(const g of liveGoals()){

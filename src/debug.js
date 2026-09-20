@@ -19,9 +19,9 @@ import { DB, EXTERNAL, KEY, LEGACY_KEY, MEMONLY, PASS, PENDING, REDO, UNDO, addE
 import { PIPELINE_STAGES, TYPE } from './types.js';
 import { addDays, clamp, daysBetween, dkey, el, esc, fmtDate, fmtDateY, fmtDay, fmtFull, fmtTime, nowMin, parseKey, relDays, startOfWeek, toast, today, uid } from './util.js';
 import { viewDay } from './views/day.js';
-import { goalState, listHidden, viewList } from './views/list.js';
+import { goalState, listHidden } from './views/list.jsx';
 import { bestQuadrant, doneCount, partialCount, quarterRange, viewQuarter } from './views/quarter.js';
-import { QUAD, ZOOMS, captureView, lastZoomIdx, render, renderBody, restoreView, wireView } from './views/render.js';
+import { QUAD, ZOOMS, captureView, lastZoomIdx, render, renderBody, restoreView, wireView } from './views/render.jsx';
 import { viewWeek } from './views/week.js';
 
 /* ---------------------------------------------------------------------------
@@ -229,7 +229,6 @@ export const API = {
   viewDay,
   viewWeek,
   viewQuarter,
-  viewList,
   goalState,
   listHidden,
   quarterRange,

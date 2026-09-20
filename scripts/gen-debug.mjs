@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+const EXT = /\.(js|jsx|ts|tsx)$/;
+
 const bridge = fs.readFileSync('test/bridge.js','utf8');
 const list = key => {
   const m = new RegExp('export const '+key+' = \\[([\\s\\S]*?)\\];').exec(bridge);
@@ -6,7 +8,7 @@ const list = key => {
 };
 const VALUES = list('BRIDGE_VALUES'), ACCESSORS = list('BRIDGE_ACCESSORS');
 
-const FILES = fs.readdirSync('src',{recursive:true}).filter(f=>f.endsWith('.js') && f!=='debug.js').map(f=>'src/'+f);
+const FILES = fs.readdirSync('src',{recursive:true}).filter(f=>EXT.test(f) && f!=='debug.js').map(f=>'src/'+f);
 const owns = new Map();
 for (const f of FILES)
   for (const m of fs.readFileSync(f,'utf8').matchAll(/^export (?:async function|function|class|const|let|var)\s+([A-Za-z_$][\w$]*)/gm))
@@ -33,7 +35,7 @@ for (const n of VALUES) if(!add(n)) missing.push(n);
 for (const n of ACCESSORS) if(!add(n)) missing.push(n);
 for (const [n,s] of Object.entries(SETTERS)) if(owns.has(s)) add(s);
 
-const relOf = f => './' + f.replace(/^src\//,'');
+const relOf = f => './' + f.replace(/^src\//,'').replace(/\.ts$/, '.js');
 const header = [...wanted.entries()].sort().map(([f,names]) =>
   `import { ${[...names].sort().join(', ')} } from '${relOf(f)}';`).join('\n');
 

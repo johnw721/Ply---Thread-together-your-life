@@ -11,6 +11,8 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
    as additive. */
 export default defineConfig({
   base: './',
+  /* Preact's automatic JSX runtime: components are plain .jsx with no h() import. */
+  esbuild: { jsx: 'automatic', jsxImportSource: 'preact' },
   /* Nothing beside it. The manifest, the icons and the worker are the three
      things that only mean something over https, and this build is the one that
      has to survive being emailed to yourself and opened from a Downloads

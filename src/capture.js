@@ -3,7 +3,7 @@ import { CAL } from './cal.js';
 import { buildGoalFrom, classify } from './engine.js';
 import { addGoal, checkpoint, currentStep, save } from './store.js';
 import { $, toast } from './util.js';
-import { render } from './views/render.js';
+import { render } from './views/render.jsx';
 
 export function doCapture(text){
   checkpoint('that capture');

@@ -2,7 +2,7 @@ import { CAL } from './cal.js';
 import { completeStep, money, shortName } from './engine.js';
 import { DB, checkpoint, currentStep, goalById, liveGoals, save } from './store.js';
 import { $, $$, addDays, daysBetween, esc, fmtDateY, toast, today, uid } from './util.js';
-import { render } from './views/render.js';
+import { render } from './views/render.jsx';
 
 /* ===================== [SECTION: BUDGET] =====================
    A weekly pot of money split across categories. Allocation, not a ledger — there's
