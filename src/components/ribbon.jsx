@@ -1,6 +1,6 @@
 import { render as preactRender } from 'preact';
 import { useEffect } from 'preact/hooks';
-import { signals, shortName } from '../engine.js';
+import { signals, sigLabel } from '../engine.js';
 import { SEV_RANK } from '../engine.js';
 import { gChips } from '../google.js';
 import { $ } from '../util.js';
@@ -25,10 +25,13 @@ function Chip({ group }){
 
   if (group.items.length === 1){
     const s = group.items[0];
+    /* Not every signal is about a goal: the week's committed spend and a proposed
+       template change are about the app, so the chip carries no data-goal and
+       clicking it opens its resolver rather than a goal editor. */
     return (
       <div class={'sig ' + cls + ' ' + (SIGFIX === s.key ? 'open' : '')}
-           data-sig={s.key} data-goal={s.goal.id}>
-        <b>{shortName(s.goal)}</b> {s.text}
+           data-sig={s.key} {...(s.goal ? {'data-goal': s.goal.id} : {})}>
+        <b>{sigLabel(s)}</b> {s.text}
         {FIXABLE.has(s.kind) ? <span class="fixmark">fix</span> : null}
         {snooze}
       </div>
@@ -38,7 +41,9 @@ function Chip({ group }){
   return (
     <div class={'sig ' + cls + ' ' + (open ? 'open' : '')} data-grp={group.kind}>
       <b>{group.items.length} {group.kind === 'gate'
-        ? 'question' + (group.items.length > 1 ? 's' : '') : 'threads'}</b>
+        ? 'question' + (group.items.length > 1 ? 's' : '')
+        : group.kind === 'prereq' ? 'things to do first'
+        : group.kind === 'tmpl' ? 'template suggestions' : 'threads'}</b>
       {' '}{SIG_KIND[group.kind] || group.kind}
       <span class="caret">{open ? '▲' : '▼'}</span>
       {snooze}
@@ -98,8 +103,8 @@ function Ribbon(){
         <div class="sigopen">
           {opened.map(s => (
             <div key={s.key} class={'srow ' + (SIGFIX === s.key ? 'on' : '')}
-                 data-sig={s.key} data-goal={s.goal.id}>
-              <b>{shortName(s.goal)}</b><span class="t">{s.text}</span>
+                 data-sig={s.key} {...(s.goal ? {'data-goal': s.goal.id} : {})}>
+              <b>{sigLabel(s)}</b><span class="t">{s.text}</span>
               {FIXABLE.has(s.kind) ? <span class="fixmark">fix</span> : null}
               <span class="zz" data-snooze={s.key} title="Snooze 7 days">snooze</span>
             </div>

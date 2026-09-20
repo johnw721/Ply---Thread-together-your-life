@@ -2,9 +2,12 @@ import { PIPELINE_STAGES, TYPE } from './types.js';
 import { bus } from './bus.js';
 import { CAL } from './cal.js';
 import { findStep } from './checkin.js';
+import { actualMins, applyTemplate, blankFootprint, committedWeek, duePrereqs, ensureFootprint,
+         fp, matchTemplate, normCost, normPrereq, proposeFromDuration, recordSample,
+         tmplGates, tmplGet } from './footprint.js';
 import { gDead } from './google.js';
 import { DB, checkpoint, currentStep, eventById, finishGoal, liveGoals, logIt, newGoal, newStep, newSub, newThread, pass, save, touchThread } from './store.js';
-import { addDays, clamp, daysBetween, dkey, fmtDate, parseKey, toast, today, uid } from './util.js';
+import { addDays, clamp, daysBetween, dkey, fmtDate, parseKey, startOfWeek, toast, today, uid } from './util.js';
 
 /* ===================== [SECTION: CLASSIFY] ===================== */
 
@@ -152,8 +155,12 @@ export function classify(text, opts={}){
   // "taught" means near-identical to something you corrected — the case where being
   // asked again is the actual annoyance. A loose match still scores, but still asks.
   const taught = !!learned[type] && learned[type].dice>=0.8;
+  /* Orthogonal to the type scoring above: a template describes the shape of the
+     doing, not what kind of goal it is. "dinner with Ma Thursday" is a task whose
+     step costs three hours and $96, and those two readings never compete. */
+  const tmpl = matchTemplate(s);
   const out={ type, project:proj||null, when, clock:parseClock(s), money:parseMoney(s),
-              scores, gates:[], learned:taught };
+              scores, gates:[], learned:taught, tmpl };
   // gated types: queue the question, never block capture
   if(spec.gate==='deadline' && !when)
     out.gates.push({id:uid(),kind:'deadline',q:'What is the hard date for "'+s+'"?'});
@@ -164,6 +171,11 @@ export function classify(text, opts={}){
   // once you've taught it this shape of phrase, it stops asking
   if(spec.review && !taught)
     out.gates.push({id:uid(),kind:'confirm-type',q:'Filed "'+s+'" as '+spec.label.toLowerCase()+'-type. Right call?'});
+  /* Never applied without being asked. A footprint puts hours into the day's
+     capacity and money into the week's budget, and guessing at either on a
+     keyword match is how an app stops being believed. */
+  if(tmpl) out.gates.push({id:uid(), kind:'footprint', tmpl:tmpl.key,
+    q:'Looks like '+tmpl.label.toLowerCase()+' — add the usual footprint?'});
   return out;
 }
 
@@ -182,7 +194,16 @@ export function buildGoalFrom(text, cls){
   g.smart.metricName = spec.metric||'';
   if(cls.when) g.smart.deadline = cls.when.key;
   if(cls.type==='habit'||cls.type==='maintenance') g.smart.deadlineSoft=true;
-  if(cls.money){ g.smart.target=cls.money; g.smart.metricUnit='$'; g.smart.metricName='amount saved'; }
+  /* A literal $NN is either a target or a cost, never both — books, reps and
+     dollars-toward-a-goal are different units, and conflating them would let a
+     savings target read as this week's spending or the other way round.
+
+     What decides it is the language, not the type. The classifier reads a bare
+     dollar sign as threshold-ish (see RULES), so "replace the charger $40" can
+     come out threshold-typed on the strength of the `$` alone — and that number
+     is plainly a cost, not a target. Only saving language makes it a target. */
+  const moneyIsCost = !!cls.money && !MONEY_TARGET.test(text);
+  if(cls.money && !moneyIsCost){ g.smart.target=cls.money; g.smart.metricUnit='$'; g.smart.metricName='amount saved'; }
   if(cls.type==='pipeline'){ g.stages=PIPELINE_STAGES.slice(); }
   if(cls.type==='milestone' && cls.project) g.notes='Project: '+cls.project;
 
@@ -193,7 +214,14 @@ export function buildGoalFrom(text, cls){
   if(cls.type==='contingent'){ t.status='dormant'; return g; }
 
   const first = firstStepFor(g,t,cls);
-  if(first) t.steps.push(first);
+  if(first){
+    /* A literal amount needs no template to land — that is the whole point of
+       typing it. The template offer is still queued separately. */
+    if(moneyIsCost){
+      ensureFootprint(first).costs.push(normCost({label:'Estimated cost', amount:cls.money}));
+    }
+    t.steps.push(first);
+  }
   return g;
 }
 
@@ -279,9 +307,50 @@ export function carrySubs(prev,next){
   return open.length;
 }
 
+/* A re-booked gym session that lost its lead, its lag and its cost lines would
+   make the whole feature evaporate after one completion. The footprint rides
+   forward; the prereqs ride forward RESET, because "reservation made" was true of
+   last Thursday's dinner and is not yet true of next Thursday's. */
+export function carryFootprint(prev,next){
+  const f=prev&&prev.footprint; if(!f||!next) return false;
+  next.footprint = {
+    lead:f.lead, lag:f.lag, tmpl:f.tmpl,
+    costs:f.costs.map(c=>normCost({label:c.label, amount:c.amount, catId:c.catId})),
+    prereqs:f.prereqs.map(p=>normPrereq({title:p.title, leadDays:p.leadDays}))
+  };
+  return true;
+}
+
+/* ---- prerequisites ----
+   One implementation, called by the ribbon resolver and the check-in alike, for
+   the same reason every other fix is: a rule with two call sites is a rule with
+   two behaviours a release later. */
+export function togglePrereq(stepId, prereqId){
+  const f=findStep(stepId); if(!f) return null;
+  const p=fp(f.step).prereqs.find(x=>x.id===prereqId); if(!p) return null;
+  p.done=!p.done; p.doneAt=p.done?new Date().toISOString():null;
+  touchThread(f.thread); save();
+  return p;
+}
+/* Applying a template is one action and one undo step, and it fills gaps only —
+   see applyTemplate(). */
+export function applyFootprint(stepId, tmplKey){
+  const f=findStep(stepId); if(!f) return null;
+  const r=applyTemplate(f.step, tmplKey);
+  if(r) save();
+  return r;
+}
+
 /* ---- the rule: completing a step must produce the next one ---- */
 export function completeStep(g,t,s,opts={}){
   s.done=true; s.doneAt=new Date().toISOString();
+  /* The optional measurement, if there is one. Skipping the timer leaves the
+     estimate exactly as it was; nothing here blocks, delays or asks about
+     completion, which is the only way an optional capture stays optional. */
+  {
+    const mins=actualMins(s), key=fp(s).tmpl;
+    if(mins && key){ recordSample(key, mins); proposeFromDuration(key); }
+  }
   if(opts.outcome) s.outcome=opts.outcome;
   touchThread(t);
   logIt('done',{goalId:g.id,threadId:t.id,stepId:s.id,text:s.title,dateKey:today()});
@@ -302,6 +371,7 @@ export function completeStep(g,t,s,opts={}){
   if(!title){ save(); return {next:null,needsDefine:true,reason:'define'}; }
   const ns=newStep(title,{auto:true,quadrant:s.quadrant});
   const carried=carrySubs(s,ns);          // unfinished subtasks ride forward
+  carryFootprint(s,ns);                   // and so does what it really costs
   t.steps.push(ns);
 
   /* A cyclical goal that was on the calendar goes straight back on it, same slot,
@@ -340,6 +410,9 @@ export function autoNextTitle(g,t,prev){
   }
 }
 export function money(n){ return '$'+Number(n).toLocaleString(); }
+/* The phrases that mean an amount is something you are working TOWARD rather
+   than something you are about to spend. */
+export const MONEY_TARGET = /\bsav(?:e|ing)\b|\bput aside\b|\bset aside\b|\bpay (?:off|down)\b|\bfund\b|\btoward\b|\bsave up\b/i;
 
 /* ---- item stream: current steps + tasks, in one shape the views can render ---- */
 /* No longer memoised per render pass. The cache existed because nothing knew
@@ -390,7 +463,7 @@ export function hushed(g,t){
 }
 export const GATE_SHORT={ deadline:'Needs a hard date', trigger:'Needs a trigger condition',
   decision:'A decision, or a goal?', 'confirm-type':'Confirm the type',
-  'resolve-decision':'Decision needs resolving' };
+  'resolve-decision':'Decision needs resolving', footprint:'Add the usual footprint?' };
 
 /* See activeItems(): uncached here, computed for components in src/signals.js. */
 export function signals(){ return _signals(); }
@@ -431,6 +504,17 @@ export function _signals(){
       else if(held){
         if(held.dateKey<T) out.push({sev:'hard',kind:'slipped',goal:g,thread:t,days:daysBetween(held.dateKey,T),
           text:'Slipped '+daysBetween(held.dateKey,T)+'d past its slot'}); }
+      /* A prereq inside its lead-days window and not done. Nothing is said outside
+         the window, and nothing at all for an unanchored step: without a date
+         there is no window to be inside, and that case is already the
+         `unscheduled` signal's — two chips for one missing decision is how a
+         ribbon stops being read. */
+      if(s && held && !lost && !gDead(held)){
+        for(const d of duePrereqs(s, held, T))
+          out.push({sev:d.late?'hard':'warn', kind:'prereq', goal:g, thread:t, step:s,
+            prereq:d.prereq, ev:held, ref:d.prereq.id, days:daysBetween(T,held.dateKey),
+            text:'Not done: '+d.prereq.title+' · '+fmtDate(held.dateKey)});
+      }
       // decisions get a long leash and only nudge at 2x cadence
       const limit = quietLimit(g);
       if(limit>0 && q>limit) out.push({sev:q>limit*2?'hard':'warn',kind:'quiet',goal:g,thread:t,days:q,
@@ -443,6 +527,29 @@ export function _signals(){
       if(left<0) out.push({sev:'hard',kind:'deadline',goal:g,thread:g.threads[0],days:left,text:'Deadline passed '+Math.abs(left)+'d ago'});
     }
   }
+  /* Money, once a week rather than once a thread. This is a signal and not a
+     scheduling constraint on purpose: suggestDay() places on time and does not
+     steer away from an expensive week, because "you cannot afford Thursday" is a
+     judgment you make, not one the calendar makes for you.
+
+     Two rungs, both off numbers that already exist: warn once the week's
+     committed spend passes what was allocated, hard once it passes the weekly
+     budget itself, which is the real ceiling. */
+  const ws=startOfWeek(T), com=committedWeek(ws);
+  const B=DB.meta.budget||{};
+  const alloc=(B.cats||[]).reduce((n,c)=>n+(+c.amount||0),0);
+  const weekly=+B.weekly||0;
+  if(alloc>0 && com.total>alloc)
+    out.push({sev:(weekly>0 && com.total>weekly)?'hard':'warn', kind:'overbudget',
+      goal:null, thread:null, ref:ws, days:0, label:'This week',
+      text:money(com.total)+' committed against '+money(alloc)+' allocated'});
+
+  /* A proposed change to a template's defaults. Muted severity: it is an offer
+     sitting at the bottom of the ribbon, not drift that needs answering. */
+  for(const gate of tmplGates())
+    out.push({sev:'mute', kind:'tmpl', goal:null, thread:null, gate, ref:gate.tmpl,
+      days:0, label:(tmplGet(gate.tmpl)||{label:'Template'}).label, text:gate.q});
+
   // strongest first, then most overdue — minus anything explicitly snoozed
   const muted=new Set((DB.meta.snoozed||[]).filter(x=>x.until>today()).map(x=>x.k));
   for(const s of out) s.key=sigKey(s);
@@ -450,7 +557,15 @@ export function _signals(){
             .sort((a,b)=>SEV_RANK[a.sev]-SEV_RANK[b.sev] || b.days-a.days);
 }
 export const SEV_RANK={hard:0, warn:1, mute:2};
-export function sigKey(s){ return s.kind+':'+(s.gate?s.gate.id:(s.thread?s.thread.id:s.goal.id)); }
+/* `ref` disambiguates several signals of one kind against one subject — three
+   unmet prereqs on the same step are three chips, not one that snoozes all of
+   them — and carries the subject for the signals that have no goal at all. */
+export function sigKey(s){
+  const base = s.gate ? s.gate.id : s.thread ? s.thread.id : s.goal ? s.goal.id : (s.ref||'-');
+  return s.kind+':'+base+(s.ref&&(s.gate||s.thread||s.goal)?':'+s.ref:'');
+}
+/** What a chip calls the thing it is about. Not every signal has a goal. */
+export function sigLabel(s){ return s.goal ? shortName(s.goal) : (s.label||'Ply'); }
 
 /* Snoozing mutes the ribbon only. checkinAgenda() doesn't consult signals(), so a
    snoozed thread still gets asked about at the weekly check-in — muting the nag

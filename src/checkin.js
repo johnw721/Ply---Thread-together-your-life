@@ -6,6 +6,7 @@ import { CAL } from './cal.js';
 import { closeModal } from './components/modal.jsx';
 import { cadenceOf, checkinAgenda, clearGate, completeStep, firstStepFor, learnType, shortName } from './engine.js';
 import { openConvert } from './goal-editor.js';
+import { footWidth } from './footprint.js';
 import { DB, checkpoint, currentStep, finishGoal, lastDoneStep, load, logIt, newStep, save, touchThread } from './store.js';
 import { $, $$, addDays, esc, fmtDate, toast, today, uid } from './util.js';
 import { QUAD, render } from './views/render.jsx';
@@ -65,11 +66,14 @@ export function subjHead(g,t){
     ${g.why?`<div class="tiny muted" style="margin-top:5px">why: ${esc(g.why)}</div>`:''}</div>`;
 }
 
+/* `mins` is the visible slot. What actually has to fit is the whole footprint —
+   placing a 60-minute gym session into the 70 minutes a day had left is how you
+   end up over by an hour without a single number ever having said so. */
 export function suggestDay(i,mins){
   const g=i.goal; const cad=cadenceOf(g)||3;
   let k=addDays(today(), Math.min(3,Math.max(1,Math.round(cad/2))));
   if(g.smart.deadline && g.smart.deadline<k) k=g.smart.deadline;
-  const need=mins||45, budget=dayBudget();
+  const need=footWidth(i.step, mins||45), budget=dayBudget();
   // first day in the window that still has room for this; failing that, the lightest
   let best=k, bl=CAL.loadOn(k);
   for(let d=0; d<5; d++){

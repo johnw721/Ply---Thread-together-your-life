@@ -16,7 +16,10 @@ export const SIG_KIND={
   blocked:     'blocked, still waiting',
   deadline:    'deadline closing in',
   gate:        'waiting on an answer',
-  hushed:      'gone quiet — not nagging'
+  hushed:      'gone quiet — not nagging',
+  prereq:      'not done yet, and due',
+  overbudget:  'committed past what is allocated',
+  tmpl:        'a template default looks off'
 };
 export const SIG_MAX=5;
 export let SIGOPEN=null, SIGALL=false, SIGFIX=null;

@@ -1,6 +1,7 @@
 import type { DateKey, Goal, Minutes, PlyEvent, Step, Thread } from './types.js';
 import { GSTATE, gCal, gDead, gEnqueue, gFlush, gNote, gOn } from './google.js';
 import { addEvent, eventsOn, logIt, masterEvent, newEvent, removeEvent, save } from './store.js';
+import { footWidth, slotDur, stepOfEvent } from './footprint.js';
 import { addDays } from './util.js';
 
 /* ---------------------------------------------------------------------------
@@ -29,7 +30,7 @@ export interface CalendarProvider {
          dateKey: DateKey, start: Minutes, dur?: Minutes): PlyEvent;
   /** take the slot away again */
   unanchor(step: Step): void;
-  /** minutes booked that day; all-day items are exempt */
+  /** minutes booked that day, footprints included; all-day items are exempt */
   loadOn(k: DateKey): Minutes;
   loadWeek(weekStartKey: DateKey): Minutes;
 }
@@ -69,8 +70,11 @@ export const CAL: CalendarProvider = {
       save(); return held;
     }
     if(step.eventId) removeEvent(step.eventId);
+    /* A template's `dur` is consulted only here, when the slot is first made —
+       never folded into the footprint, so re-anchoring never quietly changes how
+       long you said something takes. */
     const ev = addEvent(newEvent({
-      title:step.title, dateKey, start, dur:dur||45,
+      title:step.title, dateKey, start, dur:dur||slotDur(step,45),
       goalId:goal.id, threadId:thread.id, stepId:step.id
     }));
     step.eventId = ev.id;
@@ -90,8 +94,21 @@ export const CAL: CalendarProvider = {
   },
   /* minutes booked in a given day — now including whatever the real calendar
      holds, which is the point of the integration. All-day items stay exempt, and
-     so does an event Google no longer has (it's a tombstone, not a commitment). */
-  loadOn(k){ return eventsOn(k).reduce((n,e)=>n+((e.allDay||gDead(e))?0:e.dur),0); },
+     so does an event Google no longer has (it's a tombstone, not a commitment).
+
+     A step's lead and lag count here too: an hour at the gym that costs you
+     nearly two is an hour the day doesn't have, and a capacity bar that says
+     otherwise is the specific lie this whole prompt exists to stop telling.
+
+     Shadows are SUMMED, not merged. Two back-to-back sessions therefore read as
+     the full lead+dur+lag each, even where one's lag runs into the next one's lead. That
+     matches how loadOn() has always treated overlapping slots — it sums those
+     too — and keeping both consistent is worth more than a cleverer number that
+     would make the day's total depend on the order things sit in. */
+  loadOn(k){
+    return eventsOn(k).reduce((n,e)=>
+      n + ((e.allDay||gDead(e)) ? 0 : footWidth(stepOfEvent(e), e.dur)), 0);
+  },
   loadWeek(weekStartKey){ let n=0; for(let i=0;i<7;i++) n+=this.loadOn(addDays(weekStartKey,i)); return n; }
 };
 

@@ -152,6 +152,103 @@ gets a calendar slot, and never competes to be the thread's next move.
   than it jumping only when a step closes. Only where a milestone has no explicit
   metric, though — where a goal tracks a real number, subtasks don't inflate it.
 
+## Footprints
+
+A step's `dur` is what it shows. What it *costs* is more than that: the drive
+there and the shower after, the table that had to be booked two days earlier, and
+the money the whole thing spends. A step can carry a **footprint** holding all
+three — and every one of them is optional, so a step without one behaves exactly
+as it always did.
+
+```
+footprint: {
+  lead: minutes,      // before the slot: travel, setup, changing
+  lag: minutes,       // after it: travel back, showering, writing it up
+  prereqs: [{id, title, leadDays, done, doneAt}],
+  costs:   [{id, label, amount, catId}],
+  tmpl:    'dinner-out' | null
+}
+```
+
+**The shadow is presentation plus capacity, never a second event.** Day draws
+lead and lag as a dimmed extension around the slot; Week, having no timeline to
+extend along, shows them as `+25′` either side of the chip. `loadOn()` counts the
+whole width, and `suggestDay()` places on it — putting a 60-minute gym session
+into the 70 minutes a day had left is how you end up an hour over without a
+single number ever having said so. One commitment stays one row in `DB.events`:
+the moment a shadow were its own row, unanchoring, the Google mirror and the undo
+stack would each have two things to keep in step instead of one.
+
+**Shadows are summed, not merged.** Two back-to-back sessions read as the full
+lead + dur + lag each, even where one's lag runs into the next one's lead.
+`loadOn()` has always summed overlapping slots the same way, and keeping both
+consistent is worth more than a cleverer number that would make a day's total
+depend on the order things sit in.
+
+**A template library fills them in.** Eight built-ins — gym, dinner out, flight,
+client call, errand, doctor visit, car service, deep work — each with default
+lead/lag, a prereq checklist with its own lead days, and cost lines carrying a
+category *name* that resolves against your own categories when applied. Settings
+lists them and lets them be edited, not merely used.
+
+**Editing stores an overrides layer, not a copy.** Only the fields you actually
+changed are kept, so a later improvement to a built-in still reaches every field
+you never touched — the same relationship `TYPE` has to `meta.learned`. `reset to
+built-in` drops the override.
+
+**Applying one fills gaps and nothing else.** A non-zero lead or lag stays; a
+prereq or cost line whose name is already there keeps its own days, amount and
+category. It is one action and one undo step. Zero counts as a gap, which is the
+one lossy spot: a lead deliberately set to 0 is indistinguishable from one never
+set. The template's `dur` is never folded in — it sizes a slot the first time one
+is made and never afterwards, so re-anchoring can't quietly change how long you
+said something takes.
+
+**Capture offers, and never applies.** A phrase matching a template's keywords
+queues a `footprint` gate — "Looks like dinner out — add the usual footprint?" —
+the same shape as every other queued question, answerable from the ribbon or the
+check-in. A footprint puts hours into a day and money into a week; guessing at
+either on a keyword match is how an app stops being believed.
+
+**A literal `$NN` lands without any template.** What decides whether an amount is
+a target or a cost is the language, not the type: saving, putting aside, paying
+off, toward, fund. "save $5,000 for the move" is a target; "replace the charger
+$40" and "dinner with Ma $60" are costs. The classifier reads a bare dollar sign
+as threshold-ish, so without that rule the second two would have become savings
+goals.
+
+**It can learn, from time only.** A step may be timed — start, stop, entirely
+optional; skipping it changes nothing and never delays completion. After five
+timed completions of the same template (configurable), a `templateCorrection`
+gate proposes the median as the new default. It sits muted at the bottom of the
+ribbon rather than interrupting, it carries its evidence (`because: {kind:
+'duration', n, stat, value}`) rather than assuming what the evidence was, and it
+proposes a list of field changes rather than one — so a second kind of evidence
+is another `because.kind`, not a second mechanism. Accepting spends the evidence;
+so does declining, which is what stops it asking the same question twice.
+
+## Prerequisites
+
+A prereq is a condition, not a task. It never gets a calendar slot, never reaches
+the matrix, and never competes to be the thread's next move — "book the table" is
+not what you are doing on Thursday; eating the dinner is.
+
+What it does instead is raise a signal. Each one is due `leadDays` before the
+slot, and inside that window, undone, it surfaces: `warn` while there is still
+time, `hard` once the day itself has arrived. Each unmet prereq is its own chip,
+so snoozing one doesn't mute the others, and ticking it from the ribbon resolver
+calls the same `togglePrereq()` the check-in and the goal editor call.
+
+**An unanchored step says nothing.** Without a date there is no window to be
+inside, and that case is already the `unscheduled` signal's — two chips for one
+missing decision is how a ribbon stops being read.
+
+**They ride forward reset.** When a cyclical step re-books itself the footprint
+comes with it — lead, lag, costs, template — but the prereqs arrive undone, as
+new records. "Reservation made" was true of last Thursday's dinner and is not yet
+true of next Thursday's.
+
+
 ## No browser dialogs
 
 `prompt()` and `confirm()` are gone — there were 13 and 6 of them. They block the
@@ -203,11 +300,12 @@ Editing an occurrence edits the series; **Skip this one** drops a single date on
 definition, which also keeps `activeItems()` and `signals()` looking only at real,
 stored events.
 
-**A day has a ceiling.** `loadOn()` was being computed and then only used to break
-ties. There's a configurable budget now — 4h by default, all-day items exempt. Day
+**A day has a ceiling, and it counts the shadow.** `loadOn()` was being computed and
+then only used to break ties. There's a configurable budget now — 4h by default, all-day items exempt. Day
 and Week show it as a bar, `suggestDay()` fills the first day with room instead of
 the emptiest one, the check-in shows free time under each suggested date, and
-"Schedule all as suggested" names any day it just pushed over.
+"Schedule all as suggested" names any day it just pushed over. A step's lead and
+lag count against that ceiling alongside its slot — see **Footprints**.
 
 ## Google Calendar
 
@@ -427,16 +525,45 @@ each — the stacked bar resizes live, each block sized to its share of the budg
 with the unallocated remainder hatched at the end. Allocation, not a ledger: one set
 of numbers, no per-week history, no record of what was actually spent.
 
-Going over doesn't clip. The bar rescales to the allocation and the budget becomes a
-red line across it, so the overshoot is visible rather than hidden — the same
-principle as the day capacity bar. With no weekly amount set, blocks fall back to a
-relative split of whatever has been allocated.
+Going over doesn't clip. The bar rescales and the budget becomes a red line across
+it, so the overshoot is visible rather than hidden — the same principle as the day
+capacity bar. With no weekly amount set, blocks fall back to a relative split of
+whatever has been allocated.
+
+**Still an allocation, still not a ledger.** There is a time measurement on steps
+and there is deliberately no money one to match it. That is a deferral, not an
+oversight: an "actual spend" field is the first half of a ledger and would want
+receipts, splits, refunds and a per-week history, none of which exist here. Time
+can be measured with one button because a step already has a beginning and an
+end. Money can't.
+
+**Allocated is what you meant to spend; committed is what you already promised.**
+Every cost line on a step anchored inside the week, plus every manual event's own
+lines, sums into a committed figure per category — repeats expanded per
+occurrence, so a standing Thursday dinner commits its cost every Thursday rather
+than once. It draws as the solid part of that category's block in the stacked
+bar, so a category can be visibly two-thirds spoken for before the week starts.
+Money committed with no category still counts toward the week and shows in the
+remainder rather than vanishing into it.
+
+Going over still doesn't clip, and now allocation is not the only thing that can
+do it: the bar scales to whichever of budget, allocation and committed is largest,
+and the budget line crosses it either way. A week whose committed total passes
+what was allocated raises a signal — `warn` there, `hard` once it passes the
+weekly budget itself. It is a signal and not a scheduling constraint on purpose:
+`suggestDay()` does not steer away from an expensive week, because "you can't
+afford Thursday" is a judgment you make rather than one the calendar makes for
+you.
 
 **Categories can point at a threshold goal**, which is what stops this being a
 calculator bolted onto the side. `catProjection()` reads the goal's target and
-current, and the row says what the allocation actually buys — "$150/wk clears $5,850
-in 39 weeks · Apr 26, 2027" — flagged against a hard deadline, or "needs $217/wk to
-hit the deadline" when it's short. **Log** banks that week: it adds to
+current, nets out whatever is already committed against that category, and the
+row says all three numbers — "$150/wk allocated, $45 committed, $105 reaching the
+goal · clears $5,850 in 56 weeks" — flagged against a hard deadline, or "needs
+$217/wk to hit the deadline" when it's short. Where every dollar of an allocation
+is already promised it says so rather than dividing by zero. The netting uses
+*this* week's committed as a standing rate: an assumption, not a measurement,
+which is why the row names both numbers instead of quietly presenting the result. **Log** banks that week: it adds to
 `smart.current`, completes the goal's contribution step, and lets the cyclical
 machinery produce and re-book the next one. Only threshold goals are offered, and a
 link left dangling by a retype or a deleted goal degrades to no projection rather
@@ -446,7 +573,10 @@ than reading someone else's units.
 
 `signals()` runs over every thread on each render and surfaces: quiet past its
 cadence, no next step, unresolved branch, slipped past its slot, next step not on the
-calendar, blocked too long, a queued gate, a deadline inside 14 days. That's the
+calendar, blocked too long, a queued gate, a deadline inside 14 days, and a
+prerequisite inside its window and still undone. Two more are about the week
+rather than a thread and so carry no goal at all: committed spend past what was
+allocated, and a proposed change to a step template's defaults. That's the
 ribbon under the header, sorted hard-first.
 
 **One chip per *kind*, not per thread.** Twelve signals across six goals is a wall,
@@ -462,11 +592,14 @@ and it silently accumulates debt payable nowhere else.
 A chip marked `fix` now opens a resolver under the ribbon: a date for a deadline
 gate, a type select for a `confirm-type`, a step field for a thread with none, a
 date/time with that day's remaining capacity for an unscheduled step, a button per
-condition for a branch, unblock for a blocked thread. The markup is local but every
+condition for a branch, unblock for a blocked thread, a tick for a prerequisite,
+add-or-not for an offered footprint, accept-or-leave for a proposed template
+change. The markup is local but every
 action calls the same engine functions `ckAct` calls, so there's one implementation
 of each rule — answering a `confirm-type` inline teaches the classifier exactly as
-the check-in would. `quiet` and `deadline` stay unfixable on purpose: judgment calls,
-not data gaps.
+the check-in would. `quiet`, `deadline` and `overbudget` stay unfixable on purpose: judgment calls,
+not data gaps — nothing here can decide for you that this week's dinners were
+worth it.
 
 **Neglect makes it quieter.** Past `3×` the quiet limit a thread goes hushed: it
 stops emitting anything, drops off the check-in agenda, and collapses into one muted
@@ -606,7 +739,7 @@ state and re-renders — keeping this tab's zoom and cursor, and clearing the un
 stack, whose snapshots describe a history that no longer exists. If a modal or the
 check-in is open the update is deferred until it closes.
 
-**Schema and migration.** Exports carry a `schema` number (currently 7). Everything
+**Schema and migration.** Exports carry a `schema` number (currently 9). Everything
 entering the app — from `localStorage` or an imported file — goes through
 `migrate()`, which backfills fields added since, coerces malformed structures rather
 than trusting them, and refuses a file written by a newer build instead of
@@ -675,6 +808,7 @@ src/
   google.js             the Google Calendar provider behind that seam
   engine.js             classify, threads/steps/subtasks, completeStep, signals
   budget.js             the weekly money panel and day capacity
+  footprint.js          what a step really costs: templates, prereqs, committed money
   checkin.js/.jsx       the weekly flow: the queue, and the card
   views/                day, week, quarter, list (.jsx), and the render host
   components/           card, modal, dialogs, ribbon, resolver, drag
@@ -715,7 +849,7 @@ npm run typecheck
 npm run build && npm run smoke
 ```
 
-`vitest` + `jsdom`. **422 assertions pass, identically, against both targets.**
+`vitest` + `jsdom`. **510 assertions, 509 passing.**
 
 That equivalence is the point rather than a curiosity. `test/harness.js` boots
 either `legacy/index.html` — the last single-file build, kept precisely so this
@@ -724,9 +858,14 @@ either way. The suites were written against the monolith and made to pass
 *before* anything moved. While both targets agree, the restructuring provably
 changed no behaviour, and CI fails on the day they stop agreeing.
 
-Two assertions fail on both targets. They are pre-existing, they predate the
-migration, and they are left failing rather than quietly adjusted: a notification
-handed to the service worker when one is registered, and the install hint staying
+The equivalence claim covers the 422 assertions that predate schema 8. Two suites
+are newer than the monolith and have nothing in `legacy/index.html` to pin
+against: `stamp` (schema 8's `updatedAt`) and `footprint` (schema 9). The
+footprint suite skips itself on the legacy target for exactly that reason; the
+stamp suite does not, and fails there.
+
+One assertion fails on both targets. It is pre-existing, it predates all of this,
+and it is left failing rather than quietly adjusted: the install hint staying
 dismissed.
 
 | suite | assertions | covers |
@@ -744,7 +883,8 @@ dismissed.
 | dialogs · focus | 16 | the dialog semantics, the Tab trap wrapping at both ends and leaving the middle alone, focus returning to the opener, arm-to-confirm arming and disarming, the in-app dialog cancelling and undoing, and the natives armed to throw while every inline flow is driven |
 | drag | 17 | mouse drag between quadrants, tap-is-not-a-drag under 6px, `Escape` cancel, touch needing the grip, a drop landing at the time it was dropped on snapped to the quarter hour and clamped at both edges, re-slotting without orphaning, week columns scheduling on their own day, and a subtask drop scheduling its parent and floating that sub as one undo step |
 | views | 35 | one row per goal with the counts adding up, every `goalState()` branch, worst-first sorting, the type filter and the archive, the four quadrants and the tray, the week grid and its columns, the quarter roadmap and its density bars, and a hostile string rendering as text across all four views |
-| **total** | **422** (2 failing, see above) | |
+| footprints | 68 | schema 8→9 backfill and field-by-field coercion of a hand-edited footprint, idempotent migration, template application filling gaps only — a set lead, a named prereq and a labelled cost line all left exactly as they were — overrides storing only what changed and `reset` restoring the built-in, the classifier offering a template without applying it, a literal `$NN` becoming a cost line while saving language keeps it a target, capacity summing lead + dur + lag and `suggestDay()` placing on the full width, the prereq signal from silent to `warn` to `hard` and back on a tick, prereqs riding forward reset onto a re-booked step, committed spend aggregated per week including repeats expanded per occurrence and a skipped one costing nothing, the over-budget ladder at both rungs and staying out of scheduling, `catProjection()` netting committed out of the allocation and refusing to divide by zero, and the actual-duration flow end to end including the skip path, the noise floor, one open proposal per template, and accept/decline both spending the evidence |
+| **total** | **510** (1 failing, see above) | |
 
 Two gaps the suite found and pinned rather than fixed, since this pass was meant
 to change no behaviour — both carry a `KNOWN GAP` test and are written up in

@@ -4,6 +4,7 @@ import { BudgetPanel } from '../budget.jsx';
 import { CAL } from '../cal.js';
 import { ItemCard } from '../components/card.jsx';
 import { itemsOn, unscheduledItems } from '../engine.js';
+import { footLag, footLead, stepOfEvent } from '../footprint.js';
 import { DB, load } from '../store.js';
 import { addDays, fmtDate, fmtDay, fmtTime, parseKey, startOfWeek, today } from '../util.js';
 import { activeItemsC, uiRev } from '../signals.js';
@@ -42,11 +43,21 @@ function DayColumn({ k }){
         <div class="sl">Calendar{load ? ' · ' + hrs(load) : ''}{L.over ? <> <span class="overtxt">over</span></> : ''}</div>
         <LoadBar k={k} />
         { timed.length
-          ? timed.map(e => (
-              <div key={e.id} class={'evchip ' + (e.stepId ? 'step' : '')} data-ev={e.id}>
-                <span class="t">{fmtTime(e.start)}</span>{e.recur ? '↻ ' : ''}{e.title}
-              </div>
-            ))
+          ? timed.map(e => {
+              /* A week column has no timeline to extend along, so the shadow shows
+                 as what it costs either side rather than as geometry. Same numbers,
+                 same single event — see dayStripHTML(). */
+              const st = stepOfEvent(e), lead = footLead(st), lag = footLag(st);
+              return (
+                <div key={e.id} class={'evchip ' + (e.stepId ? 'step' : '') + (lead||lag ? ' hasfoot' : '')}
+                     data-ev={e.id} data-lead={lead||null} data-lag={lag||null}
+                     title={lead||lag ? (lead+' min before, '+lag+' after') : null}>
+                  {lead ? <span class="fpad">+{lead}′ </span> : null}
+                  <span class="t">{fmtTime(e.start)}</span>{e.recur ? '↻ ' : ''}{e.title}
+                  {lag ? <span class="fpad"> +{lag}′</span> : null}
+                </div>
+              );
+            })
           : <div class="overflow">{'—'}</div> }
       </div>
 

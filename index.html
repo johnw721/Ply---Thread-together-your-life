@@ -303,7 +303,7 @@ main{flex:1;overflow:auto;position:relative}
 .track{position:relative;height:54px;background:var(--bg);border-radius:8px;border:1px solid var(--line);overflow:hidden}
 .track .hr{position:absolute;top:0;bottom:0;border-left:1px solid #1e232c}
 .track .hrlbl{position:absolute;bottom:2px;font-size:10px;color:var(--dim);transform:translateX(3px)}
-.track .ev{position:absolute;top:6px;height:26px;background:var(--accent-dim);border:1px solid #40608f;border-radius:5px;
+.track .ev{position:absolute;z-index:1;top:6px;height:26px;background:var(--accent-dim);border:1px solid #40608f;border-radius:5px;
   font-size:11px;padding:3px 6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;color:#cfe0ff}
 .track .ev:hover{background:#33507a}
 .track .ev.step{background:#173427;border-color:#2f6a51;color:#a8e6c9}
@@ -311,9 +311,15 @@ main{flex:1;overflow:auto;position:relative}
 .track .ev.ro{background:#232833;border-color:#3b4354;color:#c2cadb;border-style:dashed}
 .track .ev.ro:hover{background:#2b313e}
 .track .ev.gone,.evchip.gone{opacity:.55;text-decoration:line-through;border-style:dotted}
+.tmplrow{display:flex;gap:8px;align-items:center;padding:6px 2px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.tmplrow.open{display:block;background:#ffffff05;border-radius:6px;padding:6px 8px}
+.tmpllist{max-height:260px;overflow:auto}
+.footrow{background:#ffffff05;border-radius:6px;padding:4px 6px;margin:4px 0}
+.evchip .fpad{color:var(--dim);font-size:10px;opacity:.85}
 .evchip.ro{background:#232833;border-color:#3b4354;border-style:dashed}
 .gsrc{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim2);
   border:1px solid var(--line2);border-radius:4px;padding:1px 4px;margin-left:6px}
+.track .evshadow{position:absolute;top:3px;height:32px;border-radius:7px;background:#ffffff0a;border:1px dashed #3a4152;pointer-events:none;z-index:0}
 .track .now{position:absolute;top:0;bottom:0;width:2px;background:var(--bad);z-index:3;box-shadow:0 0 6px #ef5f5f80}
 
 .matrix{display:grid;grid-template-columns:1fr 1fr;gap:12px}

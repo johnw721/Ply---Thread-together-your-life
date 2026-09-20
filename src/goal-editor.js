@@ -5,7 +5,10 @@ import { CAL } from './cal.js';
 import { ckAct, findStep, setCK, subjHead, suggestDay, suggestTime } from './checkin.js';
 import { ARMED, armConfirm, armLabel, disarm, newInAct, newInHTML, takeConfirmCb } from './components/dialogs.js';
 import { closeModal, openModal } from './components/modal.jsx';
-import { DOWS, buildGoalFrom, cadenceOf, classify, completeStep, daysQuiet, followThrough, learnType, moveItem, shortName, streak, subProgress, subs, toggleSub } from './engine.js';
+import { DOWS, buildGoalFrom, cadenceOf, classify, completeStep, daysQuiet, followThrough, learnType, money, moveItem, shortName, streak, subProgress, subs, toggleSub, togglePrereq } from './engine.js';
+import { TEMPLATES, applyTemplate, clearActual, costTotal, ensureFootprint, fp, fpMeta, hasFootprint,
+         normCost, normPrereq, startActual, stopActual, timing, tmplAdd, tmplBuiltin, tmplEdited,
+         tmplGet, tmplHide, tmplList, tmplReset, tmplSet, tmplShow } from './footprint.js';
 import { gConnect, gDead, gDisconnect, gFlush, gForeign, gPrefsHTML, gReadPrefs, gSync, setGErr } from './google.js';
 import { installPrefsHTML, notifDisable, notifEnable, notifPrefsHTML, notifWanted } from './notify.js';
 import { doInstall, renderInstallBar } from './pwa.js';
@@ -155,6 +158,83 @@ export function schedRowHTML(g,t,s,ev){
   </div>`;
 }
 
+/* ---------- the footprint editor ----------
+   Everything a step really costs, in one row under it: the minutes either side,
+   the things that have to happen first, and the money. Opened from the step, not
+   from Settings, because a footprint belongs to the doing rather than to the
+   library it may have come from. */
+export function footRowHTML(g,t,s){
+  const f=fp(s), cats=(DB.meta.budget&&DB.meta.budget.cats)||[];
+  const tmpls=tmplList();
+  const mins=s.actual&&s.actual.mins;
+  const catOpts = id => `<option value="">— no category —</option>`+cats.map(c=>
+    `<option value="${c.id}" ${c.id===id?'selected':''}>${esc(c.name)}</option>`).join('');
+
+  return `<div class="footrow" data-s="${s.id}">
+    <div class="stepline addrow">
+      <span class="tiny muted">before</span>
+      <input class="fplead" type="number" min="0" step="5" value="${f.lead}" style="width:70px" aria-label="Lead minutes">
+      <span class="tiny muted">min &middot; after</span>
+      <input class="fplag" type="number" min="0" step="5" value="${f.lag}" style="width:70px" aria-label="Lag minutes">
+      <span class="tiny muted">min</span>
+      <span class="spacer" style="flex:1"></span>
+      <select class="fptmpl" aria-label="Template">${tmpls.map(x=>
+        `<option value="${x.key}" ${x.key===f.tmpl?'selected':''}>${esc(x.label)}</option>`).join('')}</select>
+      <button class="btn sm" data-ge="foot-apply" data-s="${s.id}" data-t="${t.id}"
+        title="Fills gaps only — anything you have set stays">apply</button>
+    </div>
+
+    <div class="sublist">
+      ${f.prereqs.map(p=>`<div class="subline ${p.done?'done':''}">
+        <span class="subchk ${p.done?'on':''}" data-ge="foot-pq-toggle" data-s="${s.id}" data-t="${t.id}" data-pq="${p.id}"
+          role="checkbox" aria-checked="${p.done}" tabindex="0">${p.done?'&#10003;':''}</span>
+        <input class="edit fppqt" data-pq="${p.id}" value="${esc(p.title)}" aria-label="Prerequisite">
+        <input class="fppqd" type="number" min="0" data-pq="${p.id}" value="${p.leadDays}" style="width:58px"
+          aria-label="Days before"><span class="tiny muted">d before</span>
+        <button class="btn sm ghost" data-ge="foot-pq-del" data-s="${s.id}" data-t="${t.id}" data-pq="${p.id}">&times;</button>
+      </div>`).join('')}
+      <div class="addrow">
+        <input class="fppqnew" placeholder="+ has to happen first" aria-label="New prerequisite">
+        <button class="btn sm" data-ge="foot-pq-add" data-s="${s.id}" data-t="${t.id}">add</button>
+      </div>
+      <div class="subfoot"><span class="tiny muted">A prerequisite never gets a slot and never reaches the
+        matrix &mdash; it raises a signal inside its window instead.</span></div>
+    </div>
+
+    <div class="sublist">
+      ${f.costs.map(c=>`<div class="subline">
+        <input class="edit fpcl" data-c="${c.id}" value="${esc(c.label)}" aria-label="Cost label">
+        <span class="tiny muted">$</span>
+        <input class="fpca" type="number" min="0" step="1" data-c="${c.id}" value="${c.amount}" style="width:80px"
+          aria-label="Amount">
+        <select class="fpcc" data-c="${c.id}" aria-label="Category">${catOpts(c.catId)}</select>
+        <button class="btn sm ghost" data-ge="foot-cost-del" data-s="${s.id}" data-t="${t.id}" data-c="${c.id}">&times;</button>
+      </div>`).join('')}
+      <div class="addrow">
+        <input class="fpcnew" placeholder="+ what it costs" aria-label="New cost line">
+        <button class="btn sm" data-ge="foot-cost-add" data-s="${s.id}" data-t="${t.id}">add</button>
+      </div>
+      <div class="subfoot"><span class="tiny muted">${f.costs.length
+        ? 'Estimated at '+money(costTotal(f.costs))+' — committed against the week it is scheduled in.'
+        : 'Estimates only. Ply has never tracked what was actually spent.'}</span></div>
+    </div>
+
+    <div class="stepline addrow">
+      ${ timing(s)
+        ? `<span class="tiny">timing now&hellip;</span>
+           <button class="btn sm primary" data-ge="foot-stop" data-s="${s.id}" data-t="${t.id}">stop</button>`
+        : mins
+          ? `<span class="tiny muted">took ${mins} min</span>
+             <button class="btn sm ghost" data-ge="foot-clear" data-s="${s.id}" data-t="${t.id}">clear</button>`
+          : `<button class="btn sm" data-ge="foot-start" data-s="${s.id}" data-t="${t.id}">start timing</button>
+             <span class="tiny muted">optional &mdash; skipping it changes nothing</span>` }
+      <span class="spacer" style="flex:1"></span>
+      <button class="btn sm" data-ge="foot-cancel">close</button>
+      <button class="btn sm primary" data-ge="foot-save" data-s="${s.id}" data-t="${t.id}">save</button>
+    </div>
+  </div>`;
+}
+
 export function subListHTML(g,t,s){
   const list=subs(s), p=subProgress(s);
   return `<div class="sublist" data-s="${s.id}">
@@ -213,9 +293,18 @@ export function goalEditorHTML(id){
                  :`<span class="st" style="color:var(--warn)">unscheduled</span>`}
              <button class="btn sm ${GEROW&&GEROW.kind==='sched'&&GEROW.id===cur.id?'primary':''}"
                data-ge="sched" data-t="${t.id}" data-s="${cur.id}">${ev?'reslot':'slot it'}</button>
+             <button class="btn sm ${GEROW&&GEROW.kind==='foot'&&GEROW.id===cur.id?'primary':''}"
+               data-ge="foot" data-t="${t.id}" data-s="${cur.id}"
+               title="What it really costs: time either side, what has to happen first, money">${
+               hasFootprint(cur)
+                 ? (fp(cur).lead+fp(cur).lag ? '+'+(fp(cur).lead+fp(cur).lag)+'m' : '')
+                   +(fp(cur).costs.length?' '+money(costTotal(fp(cur).costs)):'')
+                   +(fp(cur).prereqs.filter(p=>!p.done).length?' \u00b7 '+fp(cur).prereqs.filter(p=>!p.done).length+' first':'')
+                 : 'footprint'}</button>
              <button class="btn sm" data-ge="complete" data-t="${t.id}" data-s="${cur.id}">done</button>
            </div>
            ${ GEROW&&GEROW.kind==='sched'&&GEROW.id===cur.id ? schedRowHTML(g,t,cur,ev) : '' }
+           ${ GEROW&&GEROW.kind==='foot'&&GEROW.id===cur.id ? footRowHTML(g,t,cur) : '' }
            ${subListHTML(g,t,cur)}`
         : `<div class="stepline" style="color:var(--bad)">no next step &mdash; name it below</div>` }
         ${ t.status!=='dormant' ? `<div class="stepline addrow">
@@ -381,6 +470,10 @@ export const ACT_LABEL={
   'backlog-add':'that backlog item', 'backlog-del':'removing that backlog item',
   'backlog-up':'that reorder', 'backlog-down':'that reorder',
   'sub-add':'that subtask', 'sub-del':'removing that subtask',
+  'foot-apply':'that template', 'foot-save':'that footprint', 'foot-pq-add':'that prerequisite',
+  'foot-pq-del':'removing that prerequisite', 'foot-pq-toggle':'that prerequisite',
+  'foot-cost-add':'that cost line', 'foot-cost-del':'removing that cost line',
+  'foot-start':'starting the timer', 'foot-stop':'stopping the timer', 'foot-clear':'clearing that timing',
   'sub-up':'that reorder', 'sub-down':'that reorder', 'rename':'that rename',
   'entry-add':'that pipeline entry', 'ev-skip':'skipping that occurrence',
   'pf-forget':'forgetting the learned types', finish:'completing that goal',
@@ -453,6 +546,36 @@ export function uiAct(a,btn){
     });
     return;
   }
+  if(a==='tm-edit'){ GEROW={kind:'tmpl', id:btn.dataset.k}; openPrefs(); return; }
+  if(a==='tm-cancel'){ GEROW=null; openPrefs(); return; }
+  if(a==='tm-add'){
+    const v=($('#tmNew')||{value:''}).value.trim(); if(!v){ toast('Name it.'); return; }
+    checkpoint('that template'); const t=tmplAdd(v); save();
+    GEROW={kind:'tmpl', id:t.key}; openPrefs(); toast('Added — \u2318Z undoes it.'); return;
+  }
+  if(a==='tm-save'){
+    const k=btn.dataset.k; if(!tmplGet(k)) return;
+    checkpoint('that template');
+    tmplSet(k, {
+      label:($('.tmlabel')||{value:''}).value.trim()||k,
+      lead:Math.max(0,+($('.tmlead')||{}).value||0),
+      lag:Math.max(0,+($('.tmlag') ||{}).value||0),
+      dur:Math.max(0,+($('.tmdur') ||{}).value||0),
+      kw:($('.tmkw')||{value:''}).value.split(',').map(x=>x.trim()).filter(Boolean),
+      prereqs:parsePrereqSpec(($('.tmpq')||{value:''}).value),
+      costs:parseCostSpec(($('.tmcost')||{value:''}).value)
+    });
+    save(); GEROW=null; openPrefs(); render(); toast('Saved — \u2318Z undoes it.'); return;
+  }
+  if(a==='tm-reset'){
+    checkpoint('resetting that template'); tmplReset(btn.dataset.k); save();
+    GEROW=null; openPrefs(); toast('Back to the built-in.'); return;
+  }
+  if(a==='tm-hide'){
+    checkpoint('switching off that template'); tmplHide(btn.dataset.k); save();
+    GEROW=null; openPrefs(); render(); toast('Off — steps that already use it keep what they have.'); return;
+  }
+  if(a==='tm-show'){ checkpoint('switching that template back on'); tmplShow(btn.dataset.k); save(); openPrefs(); return; }
   if(a==='pf-forget'){
     if(!armConfirm('pf-forget')) return;      // Settings is open, so arm the button rather than stack a dialog
     DB.meta.learned=[]; save(); openPrefs(); toast('Forgotten — back to the rules alone.');
@@ -543,6 +666,61 @@ export function geAct(a,btn){
     case 'backlog-up':   if(!moveItem(g.backlog,+btn.dataset.i,-1)) return; break;
     case 'backlog-down': if(!moveItem(g.backlog,+btn.dataset.i, 1)) return; break;
 
+    /* --- footprints ---
+       Reading the row back out of the DOM on save is the same contract the budget
+       panel has: typing is live, one commit is one undo step. */
+    case 'foot': saveGoalFields(g); GEROW={kind:'foot', id:btn.dataset.s}; refreshGoal(gid); return;
+    case 'foot-cancel': GEROW=null; refreshGoal(gid); return;
+    case 'foot-save':{
+      const f2=findStep(btn.dataset.s); if(!f2){GEROW=null;break;}
+      const F=ensureFootprint(f2.step);
+      F.lead=Math.max(0, +($('.fplead')||{}).value||0);
+      F.lag =Math.max(0, +($('.fplag') ||{}).value||0);
+      for(const p2 of F.prereqs){
+        const ti=$(`.fppqt[data-pq="${p2.id}"]`), dd=$(`.fppqd[data-pq="${p2.id}"]`);
+        if(ti) p2.title=ti.value.trim()||p2.title;
+        if(dd) p2.leadDays=Math.max(0,+dd.value||0);
+      }
+      for(const c2 of F.costs){
+        const la=$(`.fpcl[data-c="${c2.id}"]`), am=$(`.fpca[data-c="${c2.id}"]`), cc=$(`.fpcc[data-c="${c2.id}"]`);
+        if(la) c2.label=la.value.trim()||c2.label;
+        if(am) c2.amount=Math.max(0,+am.value||0);
+        if(cc) c2.catId=cc.value||null;
+      }
+      GEROW=null; break; }
+    case 'foot-apply':{
+      const f2=findStep(btn.dataset.s); if(!f2) return;
+      const key=($('.fptmpl')||{}).value; if(!key){ toast('Pick a template.'); return; }
+      const r=applyTemplate(f2.step, key);
+      disarm(); save(); refreshGoal(gid); render();
+      toast(r&&r.filled.length
+        ? r.filled.length+' filled in'+(r.kept.length?', '+r.kept.length+' of yours left alone':'')+'. \u2318Z undoes it.'
+        : 'Nothing to fill — everything it offers you already had.');
+      return; }
+    case 'foot-pq-add':{
+      const f2=findStep(btn.dataset.s); if(!f2) return;
+      const v=($('.fppqnew')||{value:''}).value.trim(); if(!v){ toast('Name it.'); return; }
+      ensureFootprint(f2.step).prereqs.push(normPrereq({title:v, leadDays:1})); break; }
+    case 'foot-pq-del':{
+      const f2=findStep(btn.dataset.s); if(!f2) return;
+      const F=ensureFootprint(f2.step); F.prereqs=F.prereqs.filter(x=>x.id!==btn.dataset.pq); break; }
+    case 'foot-pq-toggle':{
+      // the same call the ribbon resolver and the check-in make
+      togglePrereq(btn.dataset.s, btn.dataset.pq); break; }
+    case 'foot-cost-add':{
+      const f2=findStep(btn.dataset.s); if(!f2) return;
+      const v=($('.fpcnew')||{value:''}).value.trim(); if(!v){ toast('Name it.'); return; }
+      ensureFootprint(f2.step).costs.push(normCost({label:v, amount:0})); break; }
+    case 'foot-cost-del':{
+      const f2=findStep(btn.dataset.s); if(!f2) return;
+      const F=ensureFootprint(f2.step); F.costs=F.costs.filter(x=>x.id!==btn.dataset.c); break; }
+    case 'foot-start':{
+      const f2=findStep(btn.dataset.s); if(!f2) return; startActual(f2.step); break; }
+    case 'foot-stop':{
+      const f2=findStep(btn.dataset.s); if(!f2) return; stopActual(f2.step); break; }
+    case 'foot-clear':{
+      const f2=findStep(btn.dataset.s); if(!f2) return; clearActual(f2.step); break; }
+
     /* --- subtasks --- */
     case 'sub-del':{
       const f=findStep(btn.dataset.s); if(!f) return;
@@ -564,6 +742,88 @@ export function geAct(a,btn){
 }
 
 /* ---------------- prefs / menu ---------------- */
+/* The library is editable, not merely usable. What is stored is an OVERRIDES
+   LAYER — only the fields actually changed — so a later improvement to a built-in
+   still reaches every field nobody touched. `reset` is therefore a real option:
+   it drops the override and the built-in comes back. */
+export function tmplPrefsHTML(){
+  const list=tmplList(), m=fpMeta();
+  const hidden=(m.hidden||[]).map(k=>tmplBuiltin(k)).filter(Boolean);
+  const open=GEROW&&GEROW.kind==='tmpl'?GEROW.id:null;
+
+  const rows=list.map(t=>{
+    if(open===t.key){
+      return `<div class="tmplrow open" data-tmpl="${t.key}">
+        <div class="stepline addrow">
+          <input class="tmlabel" value="${esc(t.label)}" aria-label="Template name" style="flex:1">
+          <span class="tiny muted">before</span><input class="tmlead" type="number" min="0" step="5"
+            value="${t.lead}" style="width:66px" aria-label="Lead minutes">
+          <span class="tiny muted">slot</span><input class="tmdur" type="number" min="0" step="5"
+            value="${t.dur}" style="width:66px" aria-label="Default duration">
+          <span class="tiny muted">after</span><input class="tmlag" type="number" min="0" step="5"
+            value="${t.lag}" style="width:66px" aria-label="Lag minutes">
+        </div>
+        <div class="stepline addrow">
+          <span class="tiny muted">matches</span>
+          <input class="tmkw" value="${esc(t.kw.join(', '))}" placeholder="gym, workout" style="flex:1"
+            aria-label="Keywords">
+        </div>
+        <div class="stepline addrow">
+          <span class="tiny muted">first</span>
+          <input class="tmpq" value="${esc(t.prereqs.map(p=>p.title+' @'+p.leadDays).join(', '))}"
+            placeholder="Reservation made @2" style="flex:1" aria-label="Prerequisites">
+        </div>
+        <div class="stepline addrow">
+          <span class="tiny muted">costs</span>
+          <input class="tmcost" value="${esc(t.costs.map(c=>c.label+' '+c.amount+(c.cat?' /'+c.cat:'')).join(', '))}"
+            placeholder="Meal 60 /Food, Ride 18 /Transport" style="flex:1" aria-label="Cost lines">
+        </div>
+        <div class="stepline addrow">
+          <span class="tiny muted">Name @days before, and cost lines as "label amount /Category".</span>
+          <span class="spacer" style="flex:1"></span>
+          ${tmplEdited(t.key)?`<button class="btn sm" data-ui="tm-reset" data-k="${t.key}">reset to built-in</button>`:''}
+          <button class="btn sm ghost" data-ui="tm-hide" data-k="${t.key}">${t.builtin?'switch off':'delete'}</button>
+          <button class="btn sm" data-ui="tm-cancel">close</button>
+          <button class="btn sm primary" data-ui="tm-save" data-k="${t.key}">save</button>
+        </div></div>`;
+    }
+    const cost=costTotal(t.costs.map(c=>({amount:c.amount})));
+    return `<div class="tmplrow" data-tmpl="${t.key}">
+      <b>${esc(t.label)}</b>
+      <span class="tiny muted">+${t.lead}/${t.lag} min${t.dur?' · '+t.dur+' slot':''}${
+        t.prereqs.length?' · '+t.prereqs.length+' first':''}${cost?' · '+money(cost):''}</span>
+      ${tmplEdited(t.key)?'<span class="pill tiny">edited</span>':''}
+      ${t.builtin?'':'<span class="pill tiny">yours</span>'}
+      <span class="spacer" style="flex:1"></span>
+      <button class="btn sm" data-ui="tm-edit" data-k="${t.key}">edit</button></div>`;
+  }).join('');
+
+  return `<div class="tmpllist">${rows}</div>
+    <div class="stepline addrow" style="margin-top:8px">
+      <input id="tmNew" placeholder="+ a kind of thing you do" aria-label="New template">
+      <button class="btn sm" data-ui="tm-add">add</button>
+    </div>
+    ${hidden.length?`<div class="tiny muted" style="margin-top:8px">Switched off: ${hidden.map(t=>
+      `<button class="btn sm ghost" data-ui="tm-show" data-k="${t.key}">${esc(t.label)} &#8634;</button>`).join(' ')}</div>`:''}
+    <div class="tiny muted" style="margin-top:8px">${TEMPLATES.length} built in. Editing one stores only the
+      fields you changed, so anything you leave alone still improves with the app.</div>`;
+}
+/* "Reservation made @2, Bag packed @1" */
+export function parsePrereqSpec(str){
+  return String(str||'').split(',').map(x=>x.trim()).filter(Boolean).map(x=>{
+    const m=x.match(/^(.*?)\s*@\s*(\d+)$/);
+    return m ? {title:m[1].trim(), leadDays:+m[2]} : {title:x, leadDays:0};
+  }).filter(p=>p.title);
+}
+/* "Meal 60 /Food, Ride there 18 /Transport" — the category is a NAME, resolved
+   against the user's own list when the template is applied. */
+export function parseCostSpec(str){
+  return String(str||'').split(',').map(x=>x.trim()).filter(Boolean).map(x=>{
+    const m=x.match(/^(.*?)\s+(\d+(?:\.\d+)?)\s*(?:\/\s*(.+))?$/);
+    if(!m) return {label:x, amount:0, cat:null};
+    return {label:m[1].trim()||'Cost', amount:+m[2]||0, cat:m[3]?m[3].trim():null};
+  }).filter(c=>c.label);
+}
 export function openPrefs(){
   const m=DB.meta;
   openModal(`<h3>Settings<button class="btn ghost x" data-close>&times;</button></h3>
@@ -601,6 +861,8 @@ export function openPrefs(){
             >${armLabel('pf-forget','Forget all','Really forget all '+m.learned.length+'?')}</button>`
           : `<div class="tiny muted">Nothing learned yet. Correcting a goal's type &mdash; in the check-in or the goal
               editor &mdash; teaches the classifier to read similar phrases the same way next time.</div>`}</div>
+      <div class="sec"><h4>Step templates</h4>
+        ${tmplPrefsHTML()}</div>
       <div class="sec"><h4>Notifications</h4>
         ${notifPrefsHTML()}</div>
       <div class="sec"><h4>Install</h4>

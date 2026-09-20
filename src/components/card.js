@@ -3,6 +3,7 @@ import { gDead, gForeign } from '../google.js';
 import { hrs, loadBar, loadState } from '../budget.js';
 import { CAL } from '../cal.js';
 import { shortName, subProgress, subs } from '../engine.js';
+import { footLag, footLead, stepOfEvent } from '../footprint.js';
 import { clamp, daysBetween, esc, fmtTime, nowMin, today } from '../util.js';
 
 export const CARDSUBS=new Set();          // step ids whose checklist is expanded on the card
@@ -50,9 +51,21 @@ export function dayStripHTML(k,{drop=false}={}){
   const timed=evs.filter(e=>!e.allDay), allday=evs.filter(e=>e.allDay);
   let ticks=''; for(let h=6;h<=22;h+=2){
     ticks+=`<div class="hr" style="left:${calPos(h*60)}%"></div><div class="hrlbl" style="left:${calPos(h*60)}%">${fmtTime(h*60)}</div>`;}
+  /* Lead and lag draw as a dimmed extension around the slot, never as a second
+     event: one commitment stays one row in DB.events, or unanchoring, the Google
+     mirror and the undo stack would each have two things to keep in step. The
+     shadow is presentation plus its share of the day's capacity, nothing more. */
   const lanes=timed.map(e=>{
+    const st=stepOfEvent(e), lead=footLead(st), lag=footLag(st);
     const l=calPos(e.start), w=Math.max(3,calPos(e.start+e.dur)-l);
-    return `<div class="ev${e.stepId?' step':''}${gForeign(e)?' ro':''}${gDead(e)?' gone':''}" data-ev="${e.id}"
+    let shade='';
+    if((lead||lag) && !gDead(e)){
+      const sl=calPos(e.start-lead), sw=Math.max(w, calPos(e.start+e.dur+lag)-sl);
+      shade=`<div class="evshadow" data-shadow="${e.id}" data-lead="${lead}" data-lag="${lag}"
+        style="left:${sl}%;width:${sw}%" title="${lead?lead+' min before':''}${lead&&lag?', ':''}${
+          lag?lag+' min after':''}"></div>`;
+    }
+    return shade+`<div class="ev${e.stepId?' step':''}${gForeign(e)?' ro':''}${gDead(e)?' gone':''}" data-ev="${e.id}"
       style="left:${l}%;width:${w}%">${e.recur?'&#8635; ':''}${esc(e.title)}</div>`;}).join('');
   const now = k===today() ? `<div class="now" style="left:${calPos(nowMin())}%"></div>` : '';
   const L=loadState(k);

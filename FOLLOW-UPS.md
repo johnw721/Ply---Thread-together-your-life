@@ -62,3 +62,46 @@ deliberately so the modal is never rebuilt under the caret — but it is the lar
 remaining string surface, and it is where the inline-add fields and arm-to-confirm live.
 The dialogs suite covers those flows, so unlike the budget panel this one could be
 converted now.
+
+## 6. Deliberate deferrals from Prompt 4 (footprints)
+
+Not gaps — decisions, recorded so the next pass doesn't rediscover them as bugs.
+
+**No actual-spend capture.** There is an optional actual-*duration* capture on a step and
+deliberately no money equivalent. An "actual spend" field is the first half of a ledger and
+would want receipts, splits, refunds and a per-week history, none of which exist; the README
+has always described the budget as an allocation. Time can be measured with one button
+because a step already has a beginning and an end. Money can't.
+
+**Shadows are summed, not merged.** `loadOn()` adds `lead + dur + lag` per event with no
+interval union, so two back-to-back sessions read as the full width each even where one's
+lag overlaps the next one's lead. Chosen for consistency with how `loadOn()` has always
+summed overlapping slots, and to keep a day's total independent of the order things sit in.
+If this ever becomes the wrong trade, the change is one interval-merge pass inside
+`loadOn()` and nowhere else.
+
+**`catProjection()` treats this week's committed spend as a standing rate.** There is no
+per-week history to average, so the netting extrapolates one week. The row prints all three
+numbers rather than only the result, which is what keeps the assumption visible.
+
+**Template overrides replace whole arrays.** Editing a built-in stores only the fields that
+changed, but `prereqs` and `costs` are stored whole rather than merged entry by entry.
+Merging two lists of edits by index is a worse surprise than replacing one.
+
+**Gap-fill treats zero as unset.** A lead deliberately set to `0` is indistinguishable from
+one never set and will be filled by a template. Recording the difference needs a per-field
+"the user touched this" set — a lot of bookkeeping to protect a value that means "no lead"
+either way.
+
+**The shadow is not pushed to Google Calendar.** Lead and lag are presentational plus their
+share of capacity; they never become their own `DB.events` row and so never become their own
+remote event. Whether a remote calendar should show them is a separate decision, noted in
+Prompt 4's non-goals.
+
+## 7. `stamp.test.js` has no legacy counterpart, and fails on that target
+
+`npm run test:legacy` drives every suite against `legacy/index.html`, which is schema 7.
+`stamp.test.js` (schema 8) therefore fails there — not a regression, just a suite with
+nothing to pin against. `footprint.test.js` (schema 9) skips itself on the legacy target
+instead, which is the pattern worth converging on: either gate `stamp.test.js` the same way,
+or teach the legacy config to exclude suites newer than the monolith.

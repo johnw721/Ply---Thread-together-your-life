@@ -4,17 +4,22 @@ import { CAL } from '../cal.js';
 import { openConfirm } from './dialogs.js';
 import { SIGFIX, setSigFix } from './ribbon.js';
 import { renderSignals } from './ribbon.jsx';
-import { autoNextTitle, clearGate, firstStepFor, learnType, shortName, signals } from '../engine.js';
+import { applyFootprint, autoNextTitle, clearGate, firstStepFor, learnType, money, shortName,
+         sigLabel, signals, togglePrereq } from '../engine.js';
+import { acceptTmplGate, costTotal, declineTmplGate, fp, tmplGet } from '../footprint.js';
 import { openGoal } from '../goal-editor.js';
 import { checkpoint, currentStep, deleteGoal, newStep, save, touchThread } from '../store.js';
 import { $, addDays, esc, toast, today, uid } from '../util.js';
 import { QUAD, render } from '../views/render.jsx';
 
-export const FIXABLE=new Set(['gate','nostep','unscheduled','slipped','branch','blocked','hushed']);
+/* `quiet`, `deadline` and `overbudget` stay unfixable on purpose: all three are
+   judgment calls rather than data gaps. Nothing here can decide for you that this
+   week's dinners are worth it. */
+export const FIXABLE=new Set(['gate','nostep','unscheduled','slipped','branch','blocked','hushed','prereq','tmpl']);
 
 export function sigResolverHTML(s){
   const g=s.goal, t=s.thread;
-  const head=`<div class="fixhead"><b>${esc(shortName(g))}</b>
+  const head=`<div class="fixhead"><b>${esc(sigLabel(s))}</b>
     <span class="muted">${esc(s.text)}</span>
     <span class="spacer" style="flex:1"></span>
     <button class="btn ghost sm" data-fix="cancel">&times;</button></div>`;
@@ -37,7 +42,35 @@ export function sigResolverHTML(s){
         `<option value="${x}" ${x===g.type?'selected':''}>${TYPE[x].label}</option>`).join('')}</select>
       <button class="btn primary sm" data-fix="gate-type">Confirm</button></div>
       <div class="tiny muted">${esc(TYPE[g.type].hint)}</div>`;
+    else if(k==='footprint'){
+      const tm=tmplGet(s.gate.tmpl);
+      const cost=tm?costTotal(tm.costs.map(c=>({amount:c.amount}))):0;
+      body=`<div class="fixrow">
+        <span class="tiny muted" style="flex:1;min-width:0">${tm
+          ? esc(tm.label)+' · '+tm.lead+' min before, '+tm.lag+' after'
+            +(tm.prereqs.length?' · '+tm.prereqs.length+' to do first':'')
+            +(cost?' · '+money(cost):'')
+          : 'That template is gone.'}</span>
+        <button class="btn sm" data-fix="foot-no">Not this one</button>
+        ${tm?`<button class="btn primary sm" data-fix="foot-yes">Add it</button>`:''}</div>
+        <div class="tiny muted">It fills gaps only — anything you have already set stays.</div>`;
+    }
     else body=`<div class="fixrow"><button class="btn sm" data-fix="open">Open the goal</button></div>`;
+  }
+  else if(s.kind==='prereq'){
+    body=`<div class="fixrow">
+      <span class="tiny muted" style="flex:1;min-width:0">${esc(s.prereq.title)} &mdash; due
+        ${s.prereq.leadDays?s.prereq.leadDays+'d before ':''}${esc(s.step.title)}</span>
+      <button class="btn sm" data-fix="open">Open the goal</button>
+      <button class="btn primary sm" data-fix="prereq-done">Done</button></div>`;
+  }
+  else if(s.kind==='tmpl'){
+    const rows=(s.gate.proposes||[]).map(p=>`${esc(p.field)} ${p.from||0} &rarr; <b>${p.to}</b> min`).join(' · ');
+    body=`<div class="fixrow">
+      <span class="tiny muted" style="flex:1;min-width:0">${rows} &middot; from ${s.gate.because.n}
+        timed ${s.gate.because.n===1?'completion':'completions'}</span>
+      <button class="btn sm" data-fix="tmpl-no">Leave it</button>
+      <button class="btn primary sm" data-fix="tmpl-yes">Update</button></div>`;
   }
   else if(s.kind==='nostep'){
     body=`<div class="fixrow">
@@ -105,6 +138,27 @@ export function sigFixAct(act,btn){
         g.gates.push({id:uid(),kind:'deadline',q:'What is the hard date for "'+g.title+'"?'});
       g.threads.forEach(x=>{ if(!x.steps.length){const st=firstStepFor(g,x,null); if(st)x.steps.push(st);} });
       clearGate(g,s.gate.id); break; }
+    case 'foot-yes':{
+      const st=currentStep(t); if(!st){toast('No step to put it on.');return;}
+      const r=applyFootprint(st.id, s.gate.tmpl);
+      clearGate(g,s.gate.id);
+      setSigFix(null); save(); render();
+      toast(r&&r.filled.length
+        ? 'Footprint added — '+r.filled.length+' filled'+(r.kept.length?', '+r.kept.length+' of yours kept':'')+'. ⌘Z undoes it.'
+        : 'Nothing to fill — you had it all already.');
+      return; }
+    case 'foot-no': clearGate(g,s.gate.id); break;
+    case 'prereq-done': togglePrereq(s.step.id, s.prereq.id); break;
+    case 'tmpl-yes':{
+      const t2=acceptTmplGate(s.gate.id);
+      setSigFix(null); save(); render();
+      toast(t2?('"'+t2.label+'" updated — ⌘Z undoes it.'):'That suggestion is gone.');
+      return; }
+    case 'tmpl-no':
+      declineTmplGate(s.gate.id);
+      setSigFix(null); save(); render();
+      toast('Left as it was — it won\'t ask again from the same evidence.');
+      return;
     case 'add-step':{
       const v=$('#fxStep').value.trim(); if(!v){toast('Name the step.');return;}
       t.steps.push(newStep(v,{quadrant:$('#fxQuad').value})); touchThread(t); break; }

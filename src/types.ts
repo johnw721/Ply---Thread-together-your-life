@@ -72,6 +72,54 @@ export interface Gate { id: string; kind: GateKind; q: string; }
 /** A checklist line under a step. Never a card, never a calendar slot. */
 export interface Sub { id: string; title: string; done: boolean; doneAt: Stamp | null; }
 
+/** A money line on a step's footprint, or on a manual event's own list. Single
+    currency throughout; this is never the unit of a threshold goal's target —
+    books, reps and dollars-toward-a-goal are different things and conflating them
+    would let a savings target read as this week's spending. */
+export interface Cost {
+  id: string;
+  label: string;
+  /** whole units, never negative */
+  amount: number;
+  /** a DB.meta.budget cats id, or null — uncategorised still counts to the week */
+  catId: string | null;
+}
+
+/** Something that has to have happened before the step can. Not a subtask: it
+    never gets a calendar slot and never reaches the matrix. */
+export interface Prereq {
+  id: string;
+  title: string;
+  /** how many days before the slot it is due; 0 = the same day */
+  leadDays: number;
+  done: boolean;
+  doneAt: Stamp | null;
+}
+
+/** The hidden cost of doing a step: time either side of it, conditions before it,
+    and money. Null on a step that has none, which is every step until one is
+    given a footprint — see migrate(). */
+export interface Footprint {
+  /** minutes committed before the slot: travel, setup, changing */
+  lead: Minutes;
+  /** minutes committed after it: travel back, showering, writing it up */
+  lag: Minutes;
+  prereqs: Prereq[];
+  costs: Cost[];
+  /** the template key this was filled from; null when built by hand. The
+      correction gate needs it to know whose defaults the evidence is about. */
+  tmpl: string | null;
+}
+
+/** An optional measurement, kept beside the estimate rather than inside it — the
+    footprint stays the thing that was predicted, so "did the user change this"
+    never has to compete with "did learning change this". */
+export interface Actual {
+  startedAt: Stamp | null;
+  stoppedAt: Stamp | null;
+  mins: Minutes | null;
+}
+
 export interface Step {
   id: string;
   title: string;
@@ -87,6 +135,10 @@ export interface Step {
   /** re-booked by cadence when the previous one was ticked off */
   autoScheduled?: boolean;
   subs: Sub[];
+  /** null = no footprint, exactly as subs:[] meant no checklist */
+  footprint: Footprint | null;
+  /** an optional recorded duration; null unless the user tapped start */
+  actual: Actual | null;
   updatedAt: Stamp;
 }
 
@@ -182,6 +234,8 @@ export interface PlyEvent {
   virtual?: boolean;
   master?: string;
   done?: boolean;
+  /** a manual event can carry money of its own, with no step behind it */
+  costs: Cost[];
   updatedAt: Stamp;
 }
 
@@ -235,6 +289,44 @@ export interface Meta {
   notifSent: { k: string; ts: Stamp }[];
   sigHardSince: Record<string, Stamp>;
   installHidden: boolean;
+  footprint: FootprintMeta;
+}
+
+/** The user's layer over the built-in template library. Overrides hold only the
+    fields actually changed, so a later improvement to a built-in still reaches
+    every field nobody touched. */
+export interface FootprintMeta {
+  overrides: Record<string, Partial<StepTemplate>>;
+  custom: StepTemplate[];
+  hidden: string[];
+  /** completions with a recorded actual before a correction is offered */
+  learnAfter: number;
+  samples: Record<string, { mins: Minutes; at: Stamp }[]>;
+  gates: TemplateGate[];
+}
+
+export interface StepTemplate {
+  key: string;
+  label: string;
+  kw: string[];
+  lead: Minutes;
+  lag: Minutes;
+  dur: Minutes;
+  prereqs: { title: string; leadDays: number }[];
+  /** `cat` is a category NAME, resolved to an id at apply time */
+  costs: { label: string; amount: number; cat: string | null }[];
+}
+
+/** A proposed default change for a template, carrying its evidence rather than
+    assuming what the evidence was — duration here, reschedule drift later. */
+export interface TemplateGate {
+  id: string;
+  kind: 'templateCorrection';
+  tmpl: string;
+  proposes: { field: string; from: number; to: number }[];
+  because: { kind: string; n: number; stat?: string; value?: number };
+  q: string;
+  at: Stamp;
 }
 
 /** One object graph, one undo step per action. */

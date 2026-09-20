@@ -58,6 +58,16 @@ export const BRIDGE_VALUES = [
   'notifSupported','notifPerm','notifWanted','notifOn','notifTrackHard',
   'notifSentList','notifAlreadySent','notifMark','notifPlan','notifShow','notifTick',
   'notifStart','notifStop','notifEnable','notifDisable','notifPrefsHTML',
+  // footprints: the hidden cost of a step — time, prerequisites and money
+  'TEMPLATES','TMPL_FIELDS','TMPL_GATE','fpMeta','LEARN_AFTER',
+  'tmplList','tmplGet','tmplBuiltin','tmplEdited','tmplSet','tmplReset','tmplHide','tmplShow','tmplAdd',
+  'matchTemplate','blankFootprint','normCost','normPrereq','normFootprint','fp','hasFootprint',
+  'footLead','footLag','footWidth','slotDur','costTotal','stepCost','ensureFootprint','applyTemplate',
+  'catByName','catNameOf','prereqDueKey','duePrereqs','prereqById','stepOfEvent','committedWeek',
+  'startActual','stopActual','clearActual','actualMins','timing','median','recordSample',
+  'tmplGates','clearTmplGate','queueTmplGate','proposeFromDuration','acceptTmplGate','declineTmplGate',
+  'MONEY_TARGET','stepById','carryFootprint','togglePrereq','applyFootprint','sigLabel',
+  'committedThisWeek','catSegStyle','footRowHTML','tmplPrefsHTML','parsePrereqSpec','parseCostSpec',
   // seed
   'seed'
 ];

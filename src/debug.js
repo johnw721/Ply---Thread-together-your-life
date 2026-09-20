@@ -1,4 +1,4 @@
-import { BUDGET_COLOURS, budAct, budget, budgetBarHTML, budgetState, budgetSummaryHTML, catColour, catProjection, commitBudget, dayBudget, fundableGoals, hrs, loadBar, loadState, logContribution, paintBudget, viewBudget } from './budget.js';
+import { BUDGET_COLOURS, budAct, budget, budgetBarHTML, budgetState, budgetSummaryHTML, catColour, catProjection, catSegStyle, commitBudget, committedThisWeek, dayBudget, fundableGoals, hrs, loadBar, loadState, logContribution, paintBudget, viewBudget } from './budget.js';
 import { CAL } from './cal.js';
 import { captureHint, doCapture } from './capture.js';
 import { CK, CKROW, CK_MAX, ckAct, ckBack, ckNext, ckSaveProgress, findStep, setCK, startCheckin, subjHead, suggestDay, suggestTime } from './checkin.js';
@@ -10,14 +10,15 @@ import { FOCUSABLE, RETURN_FOCUS, closeModal, openModal } from './components/mod
 import { FIXABLE, sigFixAct, sigResolverHTML } from './components/resolver.js';
 import { SIGALL, SIGFIX, SIGOPEN, SIG_KIND, SIG_MAX, setSigAll, setSigFix, setSigOpen } from './components/ribbon.js';
 import { renderSignals } from './components/ribbon.jsx';
-import { DOWS, HUSH_AT, MONTHS, RULES, activeItems, addSub, autoNextTitle, buildGoalFrom, cadenceOf, carrySubs, checkinAgenda, checkinDue, classify, clearGate, completeStep, daysQuiet, firstStepFor, floatSub, followThrough, hushed, itemsOn, lastDowKey, learnType, learnedScore, money, moveItem, openGates, overdueItems, overlap, parseClock, parseMoney, parseWhen, quietLimit, shortName, sigKey, signals, snoozeSignals, sortSubs, streak, subProgress, subs, termsOf, toggleSub, unscheduledItems } from './engine.js';
-import { GEROW, geAct, goalEditorHTML, openConvert, openDefineNext, openEvent, openGoal, openPrefs, ordControls, refreshGoal, saveGoalFields, schedRowHTML, setGerow, subListHTML, toggleStep, uiAct } from './goal-editor.js';
+import { DOWS, HUSH_AT, MONEY_TARGET, MONTHS, RULES, activeItems, addSub, applyFootprint, autoNextTitle, buildGoalFrom, cadenceOf, carryFootprint, carrySubs, checkinAgenda, checkinDue, classify, clearGate, completeStep, daysQuiet, firstStepFor, floatSub, followThrough, hushed, itemsOn, lastDowKey, learnType, learnedScore, money, moveItem, openGates, overdueItems, overlap, parseClock, parseMoney, parseWhen, quietLimit, shortName, sigKey, sigLabel, signals, snoozeSignals, sortSubs, streak, subProgress, subs, termsOf, togglePrereq, toggleSub, unscheduledItems } from './engine.js';
+import { LEARN_AFTER, TEMPLATES, TMPL_FIELDS, TMPL_GATE, acceptTmplGate, actualMins, applyTemplate, blankFootprint, catByName, catNameOf, clearActual, clearTmplGate, committedWeek, costTotal, declineTmplGate, duePrereqs, ensureFootprint, footLag, footLead, footWidth, fp, fpMeta, hasFootprint, matchTemplate, median, normCost, normFootprint, normPrereq, prereqById, prereqDueKey, proposeFromDuration, queueTmplGate, recordSample, slotDur, startActual, stepCost, stepOfEvent, stopActual, timing, tmplAdd, tmplBuiltin, tmplEdited, tmplGates, tmplGet, tmplHide, tmplList, tmplReset, tmplSet, tmplShow } from './footprint.js';
+import { GEROW, footRowHTML, geAct, goalEditorHTML, openConvert, openDefineNext, openEvent, openGoal, openPrefs, ordControls, parseCostSpec, parsePrereqSpec, refreshGoal, saveGoalFields, schedRowHTML, setGerow, subListHTML, tmplPrefsHTML, toggleStep, uiAct } from './goal-editor.js';
 import { GDONE, GERR, GIS, GSTATE, GTIMER, GTOK, G_BACK_DAYS, G_FWD_DAYS, G_MAXPAGES, G_SCOPE, G_SYNCKEY, gAct, gAdopt, gApply, gCal, gCancel, gChips, gClientId, gConnect, gCursor, gCursorSet, gDead, gDisconnect, gDrop, gEnqueue, gFlush, gForeign, gFromRow, gISO, gLease, gLoadGIS, gMerge, gOn, gOriginOK, gPending, gPrefsHTML, gReadPrefs, gReadTime, gRequestToken, gStart, gStop, gSync, gToRow, gToken, gWinFrom, gWinTo, gapi, gmeta, gqueue, inWindow, setGErr } from './google.js';
 import { NOTIF_HARD_H, NOTIF_KEEP_DAYS, NOTIF_LEAD_MIN, NOTIF_TICK_MS, NOTIF_TIMER, NOTIF_WINDOW_MIN, installPrefsHTML, notifAlreadySent, notifDisable, notifEnable, notifMark, notifOn, notifPerm, notifPlan, notifPrefsHTML, notifSentList, notifShow, notifStart, notifStop, notifSupported, notifTick, notifTrackHard, notifWanted, plyGoTo } from './notify.js';
 import { BUILD, INSTALL_EVT, SWREG, SWSTATE, SW_URL, SW_WHY, doInstall, installHint, iosWeb, registerSW, renderInstallBar, setInstallEvt, setSWREG, setSWSTATE, standalone, swBlockedBecause } from './pwa.js';
 import { SCHEMA } from './schema.js';
 import { seed } from './seed.js';
-import { DB, EPOCH, EXTERNAL, KEY, LEGACY_KEY, MEMONLY, PASS, PENDING, REDO, SHADOW, STAMP_SKIP, UNDO, addEvent, addGoal, adoptExternal, blankDB, checkpoint, commitCheckpoint, currentStep, deleteGoal, doneGoals, eachRec, eventById, eventsOn, exportJSON, findThread, finishGoal, goalById, goals, importJSON, lastDoneStep, liveGoals, load, logIt, masterEvent, migrate, newEvent, newGoal, newStep, newSub, newThread, occurrenceOf, occursOn, paintUndo, recSig, redo, removeEvent, reopenGoal, restoreSnapshot, save, setDB, shadowReset, skipOccurrence, stampOf, threadById, touchThread, undo } from './store.js';
+import { DB, EPOCH, EXTERNAL, KEY, LEGACY_KEY, MEMONLY, PASS, PENDING, REDO, SHADOW, STAMP_SKIP, UNDO, addEvent, addGoal, adoptExternal, blankDB, checkpoint, commitCheckpoint, currentStep, deleteGoal, doneGoals, eachRec, eventById, eventsOn, exportJSON, findThread, finishGoal, goalById, goals, importJSON, lastDoneStep, liveGoals, load, logIt, masterEvent, migrate, newEvent, newGoal, newStep, newSub, newThread, occurrenceOf, occursOn, paintUndo, recSig, redo, removeEvent, reopenGoal, restoreSnapshot, save, setDB, shadowReset, skipOccurrence, stampOf, stepById, threadById, touchThread, undo } from './store.js';
 import { PIPELINE_STAGES, TYPE } from './types.js';
 import { addDays, clamp, daysBetween, dkey, el, esc, fmtDate, fmtDateY, fmtDay, fmtFull, fmtTime, nowMin, parseKey, relDays, startOfWeek, toast, today, uid } from './util.js';
 import { goalState, listHidden } from './views/list.jsx';
@@ -311,6 +312,67 @@ export const API = {
   notifEnable,
   notifDisable,
   notifPrefsHTML,
+  TEMPLATES,
+  TMPL_FIELDS,
+  TMPL_GATE,
+  fpMeta,
+  LEARN_AFTER,
+  tmplList,
+  tmplGet,
+  tmplBuiltin,
+  tmplEdited,
+  tmplSet,
+  tmplReset,
+  tmplHide,
+  tmplShow,
+  tmplAdd,
+  matchTemplate,
+  blankFootprint,
+  normCost,
+  normPrereq,
+  normFootprint,
+  fp,
+  hasFootprint,
+  footLead,
+  footLag,
+  footWidth,
+  slotDur,
+  costTotal,
+  stepCost,
+  ensureFootprint,
+  applyTemplate,
+  catByName,
+  catNameOf,
+  prereqDueKey,
+  duePrereqs,
+  prereqById,
+  stepOfEvent,
+  committedWeek,
+  startActual,
+  stopActual,
+  clearActual,
+  actualMins,
+  timing,
+  median,
+  recordSample,
+  tmplGates,
+  clearTmplGate,
+  queueTmplGate,
+  proposeFromDuration,
+  acceptTmplGate,
+  declineTmplGate,
+  MONEY_TARGET,
+  stepById,
+  carryFootprint,
+  togglePrereq,
+  applyFootprint,
+  sigLabel,
+  committedThisWeek,
+  catSegStyle,
+  footRowHTML,
+  tmplPrefsHTML,
+  parsePrereqSpec,
+  parseCostSpec,
   seed,
   get DB(){ return DB; },
   set DB(v){ setDB(v); },

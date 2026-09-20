@@ -127,6 +127,17 @@ export function blankDB(): Database {
         weekly:0,
         cats:[]             // [{id,name,amount,goalId}] — goalId may point at a threshold goal
       },
+      /* The user's layer over the built-in step templates. Overrides only — never
+         stored copies — so a later improvement to a built-in still reaches every
+         field nobody touched. See the FOOTPRINTS section. */
+      footprint:{
+        overrides:{},       // {key: {lead?,lag?,dur?,prereqs?,costs?}}
+        custom:[],          // templates the user added outright
+        hidden:[],          // built-ins switched off
+        learnAfter:5,       // timed completions before a correction is offered
+        samples:{},         // {key: [{mins,at}]} — evidence for templateCorrection
+        gates:[]            // proposed default changes, queued for the ribbon
+      },
       zoom:'day',
       cursor:null,          // dateKey the views are centred on
       google:{              // the Google Calendar provider's settings (see the GOOGLE section)
@@ -201,6 +212,15 @@ export function migrate(d: any): MigrateResult {
     for(const e of (d.events||[])) if(!('updatedAt' in e)) e.updatedAt = (e.gcal && e.gcal.updated) || EPOCH;
   }
 
+  if(from < 9){                                   // 8 -> 9: step footprints, event costs
+    for(const g of d.goals) for(const t of (g.threads||[])) for(const s of (t.steps||[])){
+      if(!('footprint' in s)) s.footprint=null;   // no footprint is the honest default
+      if(!('actual' in s)) s.actual=null;
+    }
+    for(const e of (d.events||[])) if(!Array.isArray(e.costs)) e.costs=[];
+    d.meta.footprint = d.meta.footprint || b.meta.footprint;
+  }
+
   /* The mirror fields have to hold whatever the file claimed: a row with a broken
      gcal object would be treated as remote and then fail every write against it. */
   for(const e of (d.events||[])){
@@ -244,6 +264,48 @@ export function migrate(d: any): MigrateResult {
   for(const g of d.goals) for(const t of (g.threads||[])) for(const s of (t.steps||[]))
     s.subs = (Array.isArray(s.subs)?s.subs:[]).filter(x=>x&&typeof x==='object')
       .map(x=>({id:x.id||uid(), title:String(x.title||'Untitled'), done:!!x.done, doneAt:x.doneAt||null}));
+  /* A footprint out of a hand-edited file would otherwise reach a renderer and a
+     capacity sum as whatever it claimed to be — a string lead, a prereq that is a
+     number, a negative cost. Rebuilt field by field on every load, exactly like
+     `subs` above and the `gcal` mirror before it. */
+  const num = (v, d0=0) => { const n=+v; return isFinite(n) && n>0 ? n : d0; };
+  const normCostRec = c => ({id:c.id||uid(), label:String(c.label||'Cost'),
+                             amount:num(c.amount), catId:c.catId?String(c.catId):null});
+  for(const g of d.goals) for(const t of (g.threads||[])) for(const s of (t.steps||[])){
+    const f = s.footprint;
+    s.footprint = (f && typeof f==='object') ? {
+      lead:num(f.lead), lag:num(f.lag),
+      prereqs:(Array.isArray(f.prereqs)?f.prereqs:[]).filter(x=>x&&typeof x==='object')
+        .map(x=>({id:x.id||uid(), title:String(x.title||'Untitled'), leadDays:num(x.leadDays),
+                  done:!!x.done, doneAt:x.doneAt||null})),
+      costs:(Array.isArray(f.costs)?f.costs:[]).filter(x=>x&&typeof x==='object').map(normCostRec),
+      tmpl:typeof f.tmpl==='string'?f.tmpl:null
+    } : null;
+    const a = s.actual;
+    s.actual = (a && typeof a==='object' && (a.startedAt||a.mins!=null))
+      ? {startedAt:a.startedAt||null, stoppedAt:a.stoppedAt||null,
+         mins:(+a.mins>0)?Math.round(+a.mins):null}
+      : null;
+  }
+  for(const e of (d.events||[]))
+    e.costs = (Array.isArray(e.costs)?e.costs:[]).filter(x=>x&&typeof x==='object').map(normCostRec);
+
+  const fpm = d.meta.footprint = (d.meta.footprint && typeof d.meta.footprint==='object')
+    ? d.meta.footprint : {};
+  fpm.overrides = (fpm.overrides && typeof fpm.overrides==='object') ? fpm.overrides : {};
+  fpm.custom    = (Array.isArray(fpm.custom)?fpm.custom:[]).filter(x=>x&&typeof x==='object'&&x.key);
+  fpm.hidden    = (Array.isArray(fpm.hidden)?fpm.hidden:[]).filter(x=>typeof x==='string');
+  fpm.samples   = (fpm.samples && typeof fpm.samples==='object') ? fpm.samples : {};
+  for(const k in fpm.samples) fpm.samples[k] = (Array.isArray(fpm.samples[k])?fpm.samples[k]:[])
+    .filter(x=>x && +x.mins>0).map(x=>({mins:Math.round(+x.mins), at:x.at||EPOCH})).slice(-20);
+  fpm.gates = (Array.isArray(fpm.gates)?fpm.gates:[])
+    .filter(x=>x && typeof x==='object' && x.tmpl && Array.isArray(x.proposes) && x.proposes.length)
+    .map(x=>({id:x.id||uid(), kind:'templateCorrection', tmpl:String(x.tmpl),
+              proposes:x.proposes.filter(p=>p&&p.field).map(p=>({field:String(p.field), from:+p.from||0, to:+p.to||0})),
+              because:(x.because&&typeof x.because==='object')?x.because:{kind:'unknown', n:0},
+              q:String(x.q||'Update this template?'), at:x.at||EPOCH}));
+  fpm.learnAfter = num(fpm.learnAfter, 5);
+
   // shapes that must hold whatever the file claimed
   d.meta.budget = d.meta.budget || {weekly:0, cats:[]};
   d.meta.budget.weekly = +d.meta.budget.weekly || 0;
@@ -422,6 +484,17 @@ export function eventById(id: string | null): PlyEvent | null {
   return m ? occurrenceOf(m, String(id).slice(i+1)) : null;
 }
 export function currentStep(t: Thread): Step | null { return t.steps.find(s=>!s.done) || null; }
+/* The reverse of step.eventId, which capacity needs: CAL has an event and wants
+   the footprint around it. It lives here rather than in cal.ts so that the
+   calendar seam gains no new import edge — the cycle that shipped a service
+   worker registering as `sw.js?schema=undefined` came from exactly that. */
+export function stepById(id: string | null): Step | null {
+  if(!id) return null;
+  for(const g of DB.goals) for(const t of g.threads){
+    const s=t.steps.find(x=>x.id===id); if(s) return s;
+  }
+  return null;
+}
 export function lastDoneStep(t: Thread): Step | null { const d=t.steps.filter(s=>s.done); return d[d.length-1]||null; }
 
 /* --- factories --- */
@@ -455,7 +528,9 @@ export function newStep(title: string, o: Partial<Step> = {}): Step {
   return Object.assign({
     id:uid(), title, quadrant:'q2', done:false, doneAt:null,
     eventId:null, outcome:null, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString(), auto:false,
-    subs:[]            // one level of checklist under a step — see the SUBTASKS section
+    subs:[],           // one level of checklist under a step — see the SUBTASKS section
+    footprint:null,    // the hidden cost of doing it — see the FOOTPRINTS section
+    actual:null        // an optional recorded duration; null unless the user timed it
   },o);
 }
 export function newSub(title: string): Sub { return {id:uid(), title:String(title||'').trim(), done:false, doneAt:null}; }
@@ -469,6 +544,7 @@ export function newEvent(o: Partial<PlyEvent> = {}): PlyEvent {
        the remote id that makes undo, cross-tab sync and offline capacity work
        without the network being there. See the GOOGLE section. */
     gcal:null,     // {id,etag,updated,cal,own,status,link,pending}
+    costs:[],      // a manual event can carry money of its own, with no step behind it
     updatedAt:new Date().toISOString()
   },o);
 }
