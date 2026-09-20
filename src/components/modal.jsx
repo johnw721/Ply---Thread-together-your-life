@@ -1,4 +1,3 @@
-import { render } from '../views/render.jsx';
 import { render as preactRender } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { disarm, setConfirmCb } from './dialogs.js';
@@ -27,7 +26,7 @@ export const FOCUSABLE='a[href],button:not([disabled]),input:not([disabled]),sel
 export let RETURN_FOCUS=null;
 export function setReturnFocus(el){ RETURN_FOCUS=el; }
 
-export function Modal({ html, wide, nofocus }){
+export function Modal({ html, children, wide, nofocus }){
   const ref = useRef(null);
 
   useEffect(() => {
@@ -60,7 +59,9 @@ export function Modal({ html, wide, nofocus }){
       <div ref={ref} class={'modal' + (wide ? ' wide' : '')}
            role="dialog" aria-modal="true" tabIndex="-1"
            onKeyDown={onKeyDown}
-           dangerouslySetInnerHTML={{ __html: html }} />
+           {...(html != null ? { dangerouslySetInnerHTML: { __html: html } } : {})}>
+        {html == null ? children : null}
+      </div>
     </div>
   );
 }
@@ -71,6 +72,18 @@ export function openModal(html, opts = {}){
   if (!root.innerHTML) setReturnFocus(
     (document.activeElement && document.activeElement !== document.body) ? document.activeElement : null);
   preactRender(<Modal html={html} wide={opts.wide} nofocus={opts.nofocus} />, root);
+  document.body.classList.add('modal-open');
+  return root.firstElementChild;
+}
+
+/* The same dialog, given a component instead of markup. The check-in uses this;
+   the goal editor and the smaller dialogs are still strings, and both paths land
+   in the same <Modal>, which is the point of having one. */
+export function openModalNode(node, opts = {}){
+  const root = $('#modalRoot');
+  if (!root.innerHTML) setReturnFocus(
+    (document.activeElement && document.activeElement !== document.body) ? document.activeElement : null);
+  preactRender(<Modal wide={opts.wide} nofocus={opts.nofocus}>{node}</Modal>, root);
   document.body.classList.add('modal-open');
   return root.firstElementChild;
 }

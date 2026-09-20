@@ -1,15 +1,18 @@
+import { renderCheckin } from './checkin.jsx';
 import { TYPE } from './types.js';
 import { bestQuadrant } from './views/quarter.js';
 import { budget, dayBudget, hrs, loadState } from './budget.js';
 import { CAL } from './cal.js';
-import { closeModal, openModal } from './components/modal.jsx';
-import { HUSH_AT, autoNextTitle, cadenceOf, checkinAgenda, clearGate, completeStep, daysQuiet, firstStepFor, followThrough, itemsOn, learnType, shortName, signals, unscheduledItems } from './engine.js';
+import { closeModal } from './components/modal.jsx';
+import { cadenceOf, checkinAgenda, clearGate, completeStep, firstStepFor, learnType, shortName } from './engine.js';
 import { openConvert } from './goal-editor.js';
 import { DB, checkpoint, currentStep, finishGoal, lastDoneStep, load, logIt, newStep, save, touchThread } from './store.js';
-import { $, $$, addDays, daysBetween, dkey, esc, fmtDate, fmtDay, fmtTime, toast, today, uid } from './util.js';
+import { $, $$, addDays, esc, fmtDate, toast, today, uid } from './util.js';
 import { QUAD, render } from './views/render.jsx';
 
-/* ===================== [SECTION: CHECKIN] ===================== */
+/* ===================== [SECTION: CHECKIN] =====================
+   The queue and the actions. The card itself is checkin.jsx.
+ */
 /* A guided flow, not a dashboard. It walks you card by card and will not let a
    thread stay silent: every quiet/blocked/stepless thread has to be answered. */
 export let CK=null;
@@ -60,222 +63,6 @@ export function subjHead(g,t){
       <span class="g">${bits.map(esc).join(' · ')}</span></div>
     <div class="sn">${esc(g.title)}</div>
     ${g.why?`<div class="tiny muted" style="margin-top:5px">why: ${esc(g.why)}</div>`:''}</div>`;
-}
-
-export function renderCheckin(){
-  const c=CK.q[CK.i];
-  const prog=CK.q.map((_,n)=>`<div class="s ${n<CK.i?'done':n===CK.i?'on':''}"></div>`).join('');
-  let body='', foot='', title='Weekly check-in';
-
-  if(c.t==='intro'){
-    const a=c.ag; const n=a.gates.length+a.quiet.length+a.blocked.length+a.nostep.length+a.branch.length;
-    const ft=followThrough(null,14);
-    body=`<p class="wizq">Since ${a.since===today()?'today':fmtDate(a.since)}</p>
-      <p class="wizsub">${n===0?'Nothing is drifting. Quick pass and you’re out.'
-        : c.deferred>0 ? `${CK_MAX} of ${c.total} to answer — that's enough for one sitting. The rest stay in the ribbon,
-            where you can fix any of them without coming back here.`
-        :'These threads need an answer before they can be considered live.'}</p>
-      ${a.hush.length?`<div class="sec tiny muted" style="border-color:#333a47">
-        ${a.hush.length} thread${a.hush.length>1?'s have':' has'} gone quiet past ${HUSH_AT}&times; its cadence and stopped
-        nagging. They're off this list — revive or drop them from the ribbon when you want to.</div>`:''}
-      <div class="sec"><div class="stat">
-        <div><div class="k">${a.quiet.length}</div><div class="kl">no movement</div></div>
-        <div><div class="k">${a.blocked.length}</div><div class="kl">blocked</div></div>
-        <div><div class="k">${a.nostep.length+a.branch.length}</div><div class="kl">no next step</div></div>
-        <div><div class="k">${a.unsched.length}</div><div class="kl">unscheduled</div></div>
-        <div><div class="k">${a.gates.length}</div><div class="kl">questions queued</div></div>
-      </div></div>
-      <div class="sec"><h4>Follow-through, last 14 days</h4>
-        <div class="stat"><div><div class="k">${ft.done}<span class="muted" style="font-size:15px">/${ft.planned}</span></div>
-          <div class="kl">steps done vs planned</div></div></div>
-        <div class="barmini"><i style="width:${ft.rate}%"></i></div></div>`;
-    foot=`<span class="spacer"></span><button class="btn primary" data-ck="next">Start &rarr;</button>`;
-  }
-
-  else if(c.t==='gate'){
-    const g=c.goal, k=c.gate.kind;
-    title='Queued question';
-    body=subjHead(g,null)+`<p class="wizq">${esc(c.gate.q)}</p>`;
-    if(k==='deadline'){
-      body+=`<p class="wizsub">Deadline-type goals need a real date &mdash; the metric climbs toward it.</p>
-        <label class="fld"><span>Hard date</span><input type="date" id="ckDate" value="${g.smart.deadline||''}"></label>
-        <label class="fld"><span>What proves it’s done (metric)</span><input type="text" id="ckMetric" value="${esc(g.smart.metricName||'')}" placeholder="e.g. passing exam score"></label>`;
-      foot=`<button class="btn" data-ck="skip">Ask me next week</button><span class="spacer"></span>
-            <button class="btn" data-ck="gate-retype">Not a deadline goal</button>
-            <button class="btn primary" data-ck="gate-deadline">Set date</button>`;
-    } else if(k==='trigger'){
-      body+=`<p class="wizsub">Until this fires the goal stays dormant and will not appear anywhere or nag you.</p>
-        <label class="fld"><span>Trigger condition</span><input type="text" id="ckTrig" value="${esc(g.trigger||'')}" placeholder="e.g. offer accepted on the house"></label>`;
-      foot=`<button class="btn" data-ck="skip">Ask me next week</button><span class="spacer"></span>
-            <button class="btn" data-ck="gate-fire">It already fired &mdash; activate</button>
-            <button class="btn primary" data-ck="gate-trigger">Save trigger</button>`;
-    } else if(k==='decision'){
-      body+=`<p class="wizsub">A decision resolves once and then either closes or converts. A goal gets executed on a cadence.</p>`;
-      foot=`<button class="btn" data-ck="skip">Ask me next week</button><span class="spacer"></span>
-            <button class="btn" data-ck="gate-isgoal">It’s a goal</button>
-            <button class="btn primary" data-ck="gate-isdecision">It’s a decision</button>`;
-    } else if(k==='confirm-type'){
-      body+=`<p class="wizsub">${esc(TYPE[g.type].hint)}</p>
-        <label class="fld"><span>Type</span><select id="ckType">${Object.keys(TYPE).map(t=>
-          `<option value="${t}" ${t===g.type?'selected':''}>${TYPE[t].label}</option>`).join('')}</select></label>`;
-      foot=`<button class="btn" data-ck="skip">Ask me next week</button><span class="spacer"></span>
-            <button class="btn primary" data-ck="gate-type">Confirm</button>`;
-    } else if(k==='resolve-decision'){
-      body+=`<p class="wizsub">Carry over only the why and your notes &mdash; not the whole decision history.</p>`;
-      foot=`<button class="btn" data-ck="skip">Still deciding</button><span class="spacer"></span>
-            <button class="btn" data-ck="dec-close">Close it out</button>
-            <button class="btn primary" data-ck="dec-convert">Convert to a goal</button>`;
-    }
-  }
-
-  else if(c.t==='branch'){
-    const g=c.goal,t=c.thread; const last=lastDoneStep(t);
-    title='Which way did it go?';
-    body=subjHead(g,t)+`<p class="wizq">${esc(last?last.title:'The last step')} &mdash; how did it resolve?</p>
-      <p class="wizsub">This thread branches. The next step depends on the answer.</p>
-      <div class="choices">${t.branches.map((b,i)=>
-        `<button class="btn" data-ck="branch" data-i="${i}">${esc(b.condition)} &rarr; ${esc(b.next)}</button>`).join('')}</div>`;
-    foot=`<button class="btn" data-ck="skip">Not resolved yet</button><span class="spacer"></span>`;
-  }
-
-  else if(c.t==='nostep'){
-    const g=c.goal,t=c.thread;
-    const sug=autoNextTitle(g,t,null);
-    title='Define the next step';
-    body=subjHead(g,t)+`<p class="wizq">What is the next concrete move?</p>
-      <p class="wizsub">A thread with no next step is exactly how things go quiet.</p>
-      <label class="fld"><span>Next step</span><input type="text" id="ckStep" value="${esc(sug||'')}" placeholder="one specific action"></label>
-      <label class="fld"><span>Quadrant</span><select id="ckQuad">${Object.keys(QUAD).map(q=>
-        `<option value="${q}" ${q==='q2'?'selected':''}>${QUAD[q].n} &mdash; ${QUAD[q].ax}</option>`).join('')}</select></label>`;
-    foot=`<button class="btn" data-ck="block">Actually it’s blocked</button>
-          <button class="btn ghost" data-ck="skip">Skip for now</button><span class="spacer"></span>
-          <button class="btn primary" data-ck="addstep">Add step</button>`;
-  }
-
-  else if(c.t==='blocked'){
-    const g=c.goal,t=c.thread;
-    const bd=t.blockedSince?daysBetween(dkey(new Date(t.blockedSince)),today()):daysQuiet(t);
-    title='Still waiting';
-    body=subjHead(g,t)+`<p class="wizq">Waiting on ${esc(t.blockedOn||'someone')} &mdash; ${bd} day${bd===1?'':'s'}</p>
-      <p class="wizsub">Blocked threads stay visible. They don’t go dormant.</p>
-      ${bd>=10?`<div class="sec" style="border-color:#5a4a24"><b>That is a long time.</b> Consider a nudge step you control &mdash; a follow-up message is itself a next step.</div>`:''}`;
-    foot=`<button class="btn" data-ck="unblock-nudge">Add a nudge step</button>
-          <span class="spacer"></span>
-          <button class="btn" data-ck="unblock">Unblocked &mdash; define next</button>
-          <button class="btn primary" data-ck="next">Still waiting</button>`;
-  }
-
-  else if(c.t==='quiet'){
-    const g=c.goal,t=c.thread,s=c.step;
-    title='No logged movement';
-    body=subjHead(g,t)+`<p class="wizq">${esc(s.title)}</p>
-      <p class="wizsub">Quiet for ${c.days} day${c.days===1?'':'s'}. Expected cadence: every ${cadenceOf(g)} days.</p>
-      ${ CKROW==='cadence' ? `<div class="sec"><label class="fld"><span>Days between touches</span>
-          <input type="number" id="ckCad" min="1" value="${cadenceOf(g)}"></label>
-          <div class="tiny muted">How often this should move before silence means something.</div></div>` : '' }
-      ${ CKROW==='blocked' ? `<div class="sec"><label class="fld"><span>Waiting on</span>
-          <input type="text" id="ckWho" placeholder="who or what"></label></div>` : '' }
-      ${ CKROW==='next' ? `<div class="sec"><label class="fld"><span>Done. What's the next step?</span>
-          <input type="text" id="ckNextStep" placeholder="the next move"></label></div>` : '' }`;
-    foot = CKROW==='cadence'
-      ? `<button class="btn" data-ck="row-cancel">Back</button><span class="spacer"></span>
-         <button class="btn primary" data-ck="cadence-save">Save cadence</button>`
-      : CKROW==='blocked'
-      ? `<button class="btn" data-ck="row-cancel">Back</button><span class="spacer"></span>
-         <button class="btn primary" data-ck="block-save">Mark blocked</button>`
-      : CKROW==='next'
-      ? `<button class="btn" data-ck="row-cancel">Back</button><span class="spacer"></span>
-         <button class="btn primary" data-ck="next-save">Save next step</button>`
-      : `<button class="btn" data-ck="quiet-slip">Didn’t happen</button>
-         <button class="btn" data-ck="block">Blocked</button>
-         <span class="spacer"></span>
-         <button class="btn" data-ck="quiet-cadence">Cadence is wrong</button>
-         <button class="btn primary" data-ck="quiet-done">Done &mdash; next step</button>`;
-  }
-
-  else if(c.t==='schedule'){
-    const list=unscheduledItems();
-    title='Get them on the calendar';
-    body=`<p class="wizq">${list.length?'Give each next step a slot':'Everything has a slot'}</p>
-      <p class="wizsub">If it isn’t scheduled, it isn’t real yet.</p>
-      ${ list.length? list.map(i=>`<div class="sec" data-sched="${i.step.id}">
-          <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-            <span class="dot" style="background:${QUAD[i.quadrant].c}"></span>
-            <div><div style="font-size:13px">${esc(i.step.title)}</div>
-              <div class="tiny muted">${esc(shortName(i.goal))}</div></div></div>
-          <div class="row">
-            <input type="date" class="sd" value="${suggestDay(i,45)}">
-            <input type="time" class="stm" value="${suggestTime(i)}">
-            <select class="sdur"><option value="30">30m</option><option value="45" selected>45m</option>
-              <option value="60">1h</option><option value="90">1.5h</option><option value="120">2h</option>
-              <option value="0">no time</option></select>
-            <button class="btn primary" data-ck="sched-one" data-step="${i.step.id}" style="flex:none">Schedule</button>
-          </div>
-          <div class="tiny muted" style="margin-top:6px">${(()=>{const L=loadState(suggestDay(i,45));
-            return L.over ? '<span class="overtxt">that day is already '+hrs(L.mins)+'</span> against a '+hrs(L.budget)+' day'
-                          : hrs(L.free)+' free that day';})()}</div></div>`).join('')
-        : '<div class="sec muted">Nothing loose.</div>' }`;
-    foot=`${list.length?'<button class="btn" data-ck="sched-all">Schedule all as suggested</button>':''}
-          <span class="spacer"></span><button class="btn primary" data-ck="next">Continue &rarr;</button>`;
-  }
-
-  /* The summary used to be a report card: how many you answered, what percentage you
-     hit, what's still wrong. Grading someone at the end of a chore is a poor reason
-     to come back next week. What earns the five minutes is walking out with the week
-     already laid out — so that's what this shows now, and the score is a footnote. */
-  else if(c.t==='done'){
-    const ft=followThrough(null,7), sig=signals();
-    const week=[];
-    for(let i=0;i<7;i++){
-      const k=addDays(today(),i);
-      const its=itemsOn(k).filter(x=>!x.step.done)
-        .sort((a,b)=>(a.start==null?1e9:a.start)-(b.start==null?1e9:b.start));
-      if(its.length) week.push({k, its});
-    }
-    const booked=week.reduce((n,d)=>n+d.its.length,0);
-    // the handful that carry the week — urgent-important first, soonest first
-    const RANK={q1:0,q2:1,q3:2,q4:3};
-    const three=week.flatMap(d=>d.its.map(i=>({...i,k:d.k})))
-      .sort((a,b)=>RANK[a.quadrant]-RANK[b.quadrant] || a.k.localeCompare(b.k)).slice(0,3);
-    const loose=unscheduledItems().length;
-
-    title='The week ahead';
-    body=`<p class="wizq">${booked?booked+' thing'+(booked===1?'':'s')+' on the calendar':'Nothing booked yet'}</p>
-      <p class="wizsub">${CK.touched?CK.touched+' thread'+(CK.touched===1?'':'s')+' settled. ':''}${
-        loose?loose+' next step'+(loose===1?'':'s')+' still without a slot.':'Everything live has a slot.'}</p>
-
-      ${three.length?`<div class="sec"><h4>If you only do three things</h4>
-        ${three.map(i=>`<div class="stepline">
-          <span class="dot" style="background:${QUAD[i.quadrant].c}"></span>
-          <span style="flex:1">${esc(i.step.title)}</span>
-          <span class="st">${i.k===today()?'today':fmtDay(i.k)}${i.start!=null?' '+fmtTime(i.start):''}</span>
-        </div>`).join('')}</div>`:''}
-
-      <div class="sec"><h4>Next seven days</h4>
-        ${ week.length ? week.map(d=>`<div class="wkday">
-            <div class="wkd">${d.k===today()?'Today':fmtDay(d.k)+' '+fmtDate(d.k)}
-              <span class="tiny muted">${hrs(loadState(d.k).mins)}</span></div>
-            ${d.its.map(i=>`<div class="stepline">
-              <span class="dot" style="background:${QUAD[i.quadrant].c}"></span>
-              <span style="flex:1">${esc(i.step.title)}</span>
-              <span class="st">${i.start!=null?fmtTime(i.start):'all day'}</span></div>`).join('')}
-          </div>`).join('')
-        : '<div class="muted tiny">Nothing scheduled in the next seven days. That is the thing to fix.</div>' }</div>
-
-      ${ sig.length? `<div class="sec"><h4>Still surfacing &mdash; ${sig.length}</h4>
-        <div class="tiny muted">In the ribbon, fixable there without another check-in.</div></div>`:'' }
-
-      <div class="tiny muted" style="text-align:center;margin-top:4px">
-        Last 7 days: ${ft.done} step${ft.done===1?'':'s'} done${ft.planned?' of '+ft.planned+' planned ('+ft.rate+'%)':''}</div>`;
-    foot=`<span class="spacer"></span><button class="btn primary" data-ck="finish">Done</button>`;
-  }
-
-  openModal(`<h3>${title}<span class="pill">${CK.i+1}/${CK.q.length}</span>
-      <button class="btn ghost x" data-close>&times;</button></h3>
-    <div class="wizsteps">${prog}</div>
-    <div class="mbody">${body}</div>
-    <div class="mfoot">${CK.i>0&&CK.i<CK.q.length-1?'<button class="btn ghost" data-ck="back">&larr;</button>':''}${foot}</div>`,
-    {wide:c.t==='schedule'});
 }
 
 export function suggestDay(i,mins){

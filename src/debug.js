@@ -1,7 +1,8 @@
 import { BUDGET_COLOURS, budAct, budget, budgetBarHTML, budgetState, budgetSummaryHTML, catColour, catProjection, commitBudget, dayBudget, fundableGoals, hrs, loadBar, loadState, logContribution, paintBudget, viewBudget } from './budget.js';
 import { CAL } from './cal.js';
 import { captureHint, doCapture } from './capture.js';
-import { CK, CKROW, CK_MAX, ckAct, ckBack, ckNext, ckSaveProgress, findStep, renderCheckin, setCK, startCheckin, subjHead, suggestDay, suggestTime } from './checkin.js';
+import { CK, CKROW, CK_MAX, ckAct, ckBack, ckNext, ckSaveProgress, findStep, setCK, startCheckin, subjHead, suggestDay, suggestTime } from './checkin.js';
+import { renderCheckin } from './checkin.jsx';
 import { CAL_E, CAL_S, CARDSUBS, calMinAt, calPos, dayStripHTML, itemCard } from './components/card.js';
 import { ARMED, armConfirm, armLabel, disarm, newInAct, newInHTML, openConfirm, repaintArmed } from './components/dialogs.js';
 import { swallowClick, wireDrag } from './components/drag.js';

@@ -543,21 +543,47 @@ focus returned to whatever opened them on close.
 
 ## Render
 
-`render()` replaces `#view` wholesale on every mutation, which is simple and fast
-enough — but it used to lose your place. Scroll position and the focused element
-(with its caret) are captured before the swap and restored after, so completing
-something halfway down a long list doesn't throw you back to the top, and an inline
-field being typed into survives the re-render it triggers.
+The four views, the ribbon and the check-in are Preact components. `render()`
+still exists and is still what every action calls, but it no longer replaces
+`#view` — it patches it. Rows, cards, chips and checklist lines are keyed by id,
+so completing something halfway down a long list repaints that row and leaves the
+rest of the DOM, the scroll position and the caret exactly where they were.
 
-Inside a render pass, `activeItems()` and `signals()` are memoised and `eventById()`
-reads an id-keyed map instead of scanning `DB.events` — `activeItems()` was running
-4–8 times per render, and the quarter view did a linear scan per step. Roughly a
-third off render time at scale.
+That is why there is no longer any code capturing and restoring them. The old
+`render()` swapped the whole subtree and had to put your place back afterwards by
+re-finding the focused element and its selection; `captureView()`/`restoreView()`
+are still in the tree for anything not yet converted, and no view routes through
+them.
 
-The memo is deliberately null outside that pass. A cache that outlived the render
-would hand stale answers to anything that mutated the DB and read back without
-saving — a bug waiting to happen rather than a speed-up worth having. The test suite
-caught exactly that when the first version cleared on `save()` instead.
+`activeItems()` and `signals()` are no longer memoised per render pass either.
+That cache existed because nothing knew when the DB had changed, which is exactly
+why it had to be null outside `render()` — a cache that outlived the pass would
+hand stale answers to anything that mutated and read back without saving. They
+are plain functions now, correct to call from anywhere, and components read
+computed signals that recompute when the database revision changes rather than
+when a pass begins. `eventById()` still reads an id-keyed map rather than
+scanning `DB.events`.
+
+**Transient view state has to be a signal to be visible.** Which checklists are
+expanded, which signal group is open, which chip has its resolver showing — none
+of that belongs in the DB, but a component that reads a signal gets its own
+`shouldComponentUpdate`, so re-rendering it with unchanged props is correctly
+skipped. Assigning those directly changes nothing on screen. They go through
+setters that bump a UI signal, and `render()` bumps it too, which keeps one
+explicit redraw entry point.
+
+**One dialog, one implementation.** `<Modal>` owns the scrim, `role="dialog"`,
+`aria-modal`, the Tab trap and the focus return. Those used to live in three
+places — a template string, a delegated listener on `#modalRoot`, and a module
+variable read by `closeModal()`. The check-in passes a component; the goal editor
+and the smaller dialogs still pass markup. Both land in the same `<Modal>`.
+
+**One drag engine.** `useDrag` is installed by the view host that owns the
+element the sources live in, and returns a teardown. It stays a single function
+rather than per-source handlers because the 6px threshold, the grip-only touch
+start, the `Escape` cancel and the swallowed click after a drop are properties of
+the gesture, not of any one card — splitting them across sources is how they
+drift apart.
 
 ## Safety nets
 
@@ -649,9 +675,10 @@ src/
   google.js             the Google Calendar provider behind that seam
   engine.js             classify, threads/steps/subtasks, completeStep, signals
   budget.js             the weekly money panel and day capacity
-  checkin.js            the weekly flow
-  views/                day, week, quarter, list, and render()
+  checkin.js/.jsx       the weekly flow: the queue, and the card
+  views/                day, week, quarter, list (.jsx), and the render host
   components/           card, modal, dialogs, ribbon, resolver, drag
+  signals.js            computed reads, and the revision they key off
   types.ts schema.ts    the goal types and the stored-shape number
   bus.js                the only way the lower layers reach the UI
   debug.js              the test seam
@@ -688,7 +715,7 @@ npm run typecheck
 npm run build && npm run smoke
 ```
 
-`vitest` + `jsdom`. **354 assertions pass, identically, against both targets.**
+`vitest` + `jsdom`. **422 assertions pass, identically, against both targets.**
 
 That equivalence is the point rather than a curiosity. `test/harness.js` boots
 either `legacy/index.html` — the last single-file build, kept precisely so this
@@ -714,7 +741,10 @@ dismissed.
 | google provider | 210 | auth state (no client id, connect, scope, the token never reaching `localStorage`, one silent renewal then `stale`, offline vs expired, revoke-and-keep-your-schedule); mapping timed, all-day and pre-expanded recurring events; merged reads; foreign events read-only; a hostile remote title escaped everywhere; create, patch-in-place re-anchor, delete, and a create cancelled before it flushed; unbounded token-minting sync with no `timeMin`, incremental replay, multi-page paging, `410` recovery, window pruning, the leader lease; remote-wins-on-time, Ply-wins-on-step-link, tombstone instead of silent unanchor; the offline queue holding, coalescing, replaying in order and surviving a reload; remote events counted against the day budget and `suggestDay()`; schema 6→7 migration and coercion; export stripping the foreign cache; and the Settings panel's three states |
 | local provider (regression) | 29 | the local path through everything the provider touched: still the default with no network reached, anchor/re-anchor/unanchor purely local, the plain unscheduled wording, one anchor as one undo step, repeats still expanding at read time, and a local export carrying every event |
 | pwa · notifications | 40 | the service-worker guard and what blocks it, the install hint's states, and the three notifications firing once each |
-| **total** | **354** (2 failing, see above) | |
+| dialogs · focus | 16 | the dialog semantics, the Tab trap wrapping at both ends and leaving the middle alone, focus returning to the opener, arm-to-confirm arming and disarming, the in-app dialog cancelling and undoing, and the natives armed to throw while every inline flow is driven |
+| drag | 17 | mouse drag between quadrants, tap-is-not-a-drag under 6px, `Escape` cancel, touch needing the grip, a drop landing at the time it was dropped on snapped to the quarter hour and clamped at both edges, re-slotting without orphaning, week columns scheduling on their own day, and a subtask drop scheduling its parent and floating that sub as one undo step |
+| views | 35 | one row per goal with the counts adding up, every `goalState()` branch, worst-first sorting, the type filter and the archive, the four quadrants and the tray, the week grid and its columns, the quarter roadmap and its density bars, and a hostile string rendering as text across all four views |
+| **total** | **422** (2 failing, see above) | |
 
 Two gaps the suite found and pinned rather than fixed, since this pass was meant
 to change no behaviour — both carry a `KNOWN GAP` test and are written up in

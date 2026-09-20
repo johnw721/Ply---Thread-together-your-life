@@ -1,4 +1,3 @@
-import { render } from '../views/render.jsx';
 import { render as preactRender } from 'preact';
 import { useEffect } from 'preact/hooks';
 import { signals, shortName } from '../engine.js';
