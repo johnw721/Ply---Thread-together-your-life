@@ -90,6 +90,43 @@ export function appShell(html){
 let seq = 0;
 
 /* ---------------------------------------------------------------------------
+   Teardown between boots.
+
+   The monolith gets a brand-new jsdom per boot, so nothing from the previous
+   test can still be listening. The migrated tree shares one document across a
+   file's tests, so listeners on window/document and any interval a boot started
+   (the Google poll, the notification tick) would pile up: an old instance keeps
+   answering events, holding the leader lease and writing to a database the
+   current test has replaced.
+
+   Everything registered on window or document is recorded and removed before the
+   next boot, which puts the two targets on equal footing.
+--------------------------------------------------------------------------- */
+let wired = [];
+let timers = [];
+let patched = false;
+
+function trackGlobals(win){
+  if (patched) return;
+  patched = true;
+  for (const target of [win, win.document]){
+    const add = target.addEventListener.bind(target);
+    target.addEventListener = (type, fn, opts) => { wired.push([target, type, fn, opts]); return add(type, fn, opts); };
+  }
+  const setI = win.setInterval.bind(win);
+  win.setInterval = (fn, ms, ...rest) => { const id = setI(fn, ms, ...rest); timers.push(id); return id; };
+}
+
+function teardownPrevious(win){
+  for (const [target, type, fn, opts] of wired){
+    try { target.removeEventListener(type, fn, opts); } catch(_) {}
+  }
+  wired = [];
+  for (const id of timers) { try { win.clearInterval(id); } catch(_) {} }
+  timers = [];
+}
+
+/* ---------------------------------------------------------------------------
    boot() — a fresh app, either target, same handle back.
 
    opts.seed   true  (default) demo data, as a first run gives you
@@ -106,10 +143,13 @@ export async function boot(opts = {}){
 
 async function bootLegacy({seed, stored, key}){
   const { JSDOM } = await import('jsdom');
-  /* The live entry, not the frozen snapshot: legacy/index.html is the
-     pre-migration reference to diff against, but the monolith under test is the
-     one being edited. readAppHTML() falls back to the snapshot if it is gone. */
-  let html = readAppHTML();
+  /* legacy/index.html IS the monolith now. Up to the split it was the live
+     index.html that was being edited, so this read the live entry; from the
+     split on, index.html is the Vite entry and carries no inline script, and the
+     monolith the suites are pinned against lives here. It is the last
+     single-file build — schema 7, Google provider and PWA included — kept so the
+     same suite can still be run against it. */
+  let html = readLegacyHTML();
   const bridge = `<script>${legacyBridgeSource()}</script>`;
 
   // localStorage has to be populated before the app's own script runs, so the
@@ -135,6 +175,17 @@ async function bootLegacy({seed, stored, key}){
 async function bootSrc({seed, stored, key}){
   const win = globalThis.window;
   stubLayout(win);
+  trackGlobals(win);
+  teardownPrevious(win);
+
+  /* Let the previous instance's in-flight work finish before wiping storage.
+     A boot that left a sync in flight will still write its leader lease when the
+     promise settles; if that lands after the clear, the NEXT instance sees a
+     foreign lease, decides another tab owns the pull, and quietly syncs nothing.
+     The monolith never had this because each boot got its own jsdom, and its own
+     localStorage with it. */
+  await new Promise(r => setTimeout(r, 0));
+  await new Promise(r => setTimeout(r, 0));
 
   try { win.localStorage.clear(); } catch(_) {}
   if (stored) { try { win.localStorage.setItem(key, stored); } catch(_) {} }
@@ -145,8 +196,24 @@ async function bootSrc({seed, stored, key}){
   win.document.body.innerHTML = appShell(readAppHTML());
   win.document.body.className = '';
 
+  /* main.js boots itself when the browser loads it. Here the harness calls
+     bootstrap() explicitly, so the self-boot has to be off or every listener is
+     registered twice and each action runs twice. */
+  win.__PLY_NO_AUTOBOOT = true;
+
+  /* Boot schedules a couple of deferred nudges (the check-in toast at 700ms).
+     In the monolith each boot got its own jsdom, so those died with it; here one
+     document is shared across a file's tests and a stale nudge would overwrite
+     the toast a later test is reading. Collect and cancel them. */
+  const realSetTimeout = win.setTimeout;
+  const pending = [];
+  win.setTimeout = (fn, ms, ...rest) => { const id = realSetTimeout(fn, ms, ...rest); pending.push(id); return id; };
+
   const mod = await import('../src/main.js?boot=' + (++seq));
-  const api = mod.bootstrap({ seed: seed === true });
+  const api = mod.bootstrap();
+
+  win.setTimeout = realSetTimeout;
+  for (const id of pending) win.clearTimeout(id);
   win.__ply = api;
   finishBoot(api, win, {seed, stored});
   return wrap(api, win, null);

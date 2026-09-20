@@ -3,6 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0e1014">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="Ply — a goal tracker built on the claim that goals fail when they quietly stop having a next move.">
+<!-- The manifest and the service worker are the only two files Ply asks the
+     server for; a file:// build 404s both and carries on unchanged. -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ply">
 <title>Ply &mdash; thread your next move</title>
 <style>
 :root{
@@ -296,6 +307,13 @@ main{flex:1;overflow:auto;position:relative}
   font-size:11px;padding:3px 6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;color:#cfe0ff}
 .track .ev:hover{background:#33507a}
 .track .ev.step{background:#173427;border-color:#2f6a51;color:#a8e6c9}
+/* foreign Google events: present, counted against the day, not yours to edit */
+.track .ev.ro{background:#232833;border-color:#3b4354;color:#c2cadb;border-style:dashed}
+.track .ev.ro:hover{background:#2b313e}
+.track .ev.gone,.evchip.gone{opacity:.55;text-decoration:line-through;border-style:dotted}
+.evchip.ro{background:#232833;border-color:#3b4354;border-style:dashed}
+.gsrc{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim2);
+  border:1px solid var(--line2);border-radius:4px;padding:1px 4px;margin-left:6px}
 .track .now{position:absolute;top:0;bottom:0;width:2px;background:var(--bad);z-index:3;box-shadow:0 0 6px #ef5f5f80}
 
 .matrix{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -523,6 +541,175 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none}
   .fixrow{gap:6px}
   .fixrow input[type=date],.fixrow input[type=time]{flex:1;min-width:0}
 }
+
+/* =========================================================================
+   THE PHONE PASS
+   The first mobile pass fixed the header, the ribbon, the strip, the filter
+   chips and the list rows, and said so honestly: the Day matrix, the Week grid,
+   the budget rows and the check-in cards were never part of it, and none of it
+   had ever run on a device. Rendering the real markup in Chromium at 375x812
+   and 390x844 found what reading the CSS could not:
+
+     · the goal editor was ~750px wide inside a 327px scrim and simply clipped.
+       `width:min(860px,100%)` loses to a grid item's automatic min-content
+       minimum, so the widest modal in the app was unreachable on a phone and
+       nothing scrolled to reveal it — it was cut off, not merely overflowing.
+     · an empty week column still claimed its 320px, so a quiet week was two
+       thousand pixels of nothing to scroll past.
+     · every quadrant kept its own 44vh scroller inside the page's scroller:
+       two scrollbars competing for one thumb.
+     · the budget row's four-column grid put the delete X on a line of its own,
+       under the wrong category.
+     · 47 controls on the Day view alone measured under 44px.
+
+   These blocks come after the originals deliberately: the phone layout has to
+   win over the desktop grid, and the coarse-pointer sizes have to win over the
+   phone layout.
+   ========================================================================= */
+@media (max-width:760px){
+  /* --- modals ---------------------------------------------------------
+     The scrim is a grid and a grid item's automatic minimum is its min-content
+     width, which is why `width:min(860px,100%)` never held. min-width:0 is the
+     whole fix; the rest is making a dialog feel like a sheet. */
+  .scrim{padding:8px;place-items:end center}
+  .modal,.modal.wide{width:100%;min-width:0;max-width:100%;max-height:93vh}
+  .modal > h3{padding:12px 14px;font-size:14px}
+  .mbody{padding:13px 14px;min-width:0}
+  .mfoot{padding:10px 14px;flex-wrap:wrap;gap:6px}
+  .mfoot .btn{flex:1 1 auto}
+  .mfoot .spacer{flex-basis:100%;height:0}
+  .sec{padding:10px}
+  /* three fields across is a desktop row; here it wraps */
+  .row{flex-wrap:wrap}
+  .row > *{flex:1 1 140px;min-width:0}
+
+  /* --- Day ------------------------------------------------------------ */
+  .axis{display:none}                       /* one column has no urgency axis */
+  .quad{min-height:0}                       /* an empty quadrant costs a line */
+  .quad .items{max-height:none;overflow:visible}
+  .quad .empty{padding:10px 4px}
+  /* the strip is ~315px for a seventeen-hour day, which renders every event as
+     three characters and an ellipsis. Give the day its real width and let the
+     strip scroll inside its own box — the page still doesn't. */
+  .trackwrap{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
+    border-radius:8px;scrollbar-width:thin}
+  .trackwrap > .track{min-width:640px}
+
+  /* --- Week ------------------------------------------------------------ */
+  .daycol{min-height:0}
+  .daycol > h4{position:sticky;top:0;z-index:1}
+
+  /* --- budget ---------------------------------------------------------- */
+  .budget .lbl{flex-wrap:wrap;gap:6px}
+  .bwrap{margin-left:auto}
+  .bwrap input{width:88px}
+  .brow{grid-template-columns:10px minmax(0,1fr) 100px;gap:7px 8px;align-items:center}
+  .brow .bgoal{grid-column:2/-1}
+  .brow .bpct{grid-column:3;justify-self:end}
+  .brow .btn{grid-column:2/-1;justify-self:start}
+  .brow .bdel{grid-column:3;grid-row:1;justify-self:end}
+  .bnote{grid-column:2/-1;margin-top:0}
+  .brows{gap:16px}
+  .brow + .brow{border-top:1px solid var(--line);padding-top:14px}
+
+  /* --- check-in --------------------------------------------------------- */
+  .choices{gap:6px}
+  .choices .btn{flex:1 1 calc(50% - 6px)}
+  .stat{gap:12px 18px}
+  .wizsteps{padding:10px 14px 0}
+  .subject{padding:10px}
+
+  /* --- the toast ---------------------------------------------------------
+     It sat at a fixed 20px from the bottom, which is under the home indicator
+     on a phone and on top of the modal footer whenever a dialog is open. */
+  #toast{max-width:calc(100vw - 24px);text-align:center}
+  body.modal-open #toast{bottom:calc(74px + env(safe-area-inset-bottom,0px))}
+}
+
+/* ---------- coarse pointers, second pass ----------
+   The first pass grew the reorder arrows and the list grip and stopped there.
+   Measured on a device-sized render the floor was around 35px, not 44: every
+   .btn.sm, every field, both checkboxes, the strip grips, the budget rows, the
+   ribbon's dismiss X. Same principle, applied to all of it — grow the target,
+   never the ink. Anything that can afford the room takes a min-height; anything
+   that has to stay visually small gets an absolutely-positioned ::after, which
+   is invisible, costs no layout and is exactly what tests/mobile measures.
+   This block sits after the phone layout so its sizes win over it. */
+@media (pointer:coarse){
+  .btn,.zoombar button,.menu button,.ltog,.sig,.evchip,.tchip{min-height:44px}
+  .btn{min-width:44px;display:inline-flex;align-items:center;justify-content:center}
+  .menu button{justify-content:flex-start}
+  .evchip{display:flex;flex-direction:column;justify-content:center}
+  .tchip{align-items:flex-start}
+  .tchip .dot{margin-top:9px}
+  #btnUndo,#btnRedo{min-width:44px;font-size:17px}
+
+  /* fields */
+  input[type=text],input[type=date],input[type=time],input[type=number],
+  input[type=search],input[type=email],select,textarea,
+  .newin,.brif,.brthen,.blockwho,.schd,.schtm,input.edit{min-height:44px}
+  input.edit{padding:6px 7px}
+  .fixrow input,.fixrow select,.brow input,.brow select,.bwrap input{min-height:44px;font-size:13px}
+  #capture{min-height:44px}
+  /* a native checkbox can't carry a pseudo-element, so its label is the target —
+     which is what a thumb aims at anyway */
+  label.fld{min-height:44px;display:flex;flex-direction:column;justify-content:center}
+  .addrow label,.fixrow label,.subfoot label,.stepline label{min-height:44px;align-items:center}
+  input[type=checkbox],input[type=radio]{width:22px;height:22px;min-height:0}
+
+  /* small ink, thumb-sized hit area */
+  .chk,.subchk,.subpill,.sig .zz,.bdel{position:relative}
+  .chk::after{content:"";position:absolute;inset:-11px}
+  .subchk::after{content:"";position:absolute;inset:-12px}
+  .subpill::after{content:"";position:absolute;inset:-9px}
+  .sig .zz::after{content:"";position:absolute;inset:-14px}
+  .bdel::after{content:"";position:absolute;inset:-7px}
+
+  /* grips. The list grip's padding had nowhere to go: it sat in a 14px grid
+     column, so the column has to grow with it. */
+  .card .grip{min-width:44px;justify-content:center;padding:12px 10px}
+  .lrow .grip{min-width:44px;min-height:44px;display:flex;align-items:center;
+    justify-content:center;padding:12px 4px}
+  .subgrip{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+  .lrow{grid-template-columns:44px 92px minmax(110px,1.1fr) minmax(130px,1.4fr) 104px 60px}
+
+  /* the strip's own chips, which were 26px tall and unreadable */
+  .track{height:64px}
+  .track .ev{height:40px;top:8px;padding:6px;min-width:36px}
+  .track .hrlbl{bottom:1px}
+}
+@media (pointer:coarse) and (max-width:760px){
+  .lrow{grid-template-columns:44px minmax(0,1fr) auto}
+  .zoombar button{min-height:44px;padding:9px 4px}
+  .mfoot .btn{min-height:44px}
+  .viewhead .nav .btn{min-height:44px}
+}
+
+/* ---------- reduced motion ----------
+   All of Ply's motion is feedback rather than information: the zoom between
+   views, the toast sliding up, the ghost's tilt, the drag marker, the budget
+   bar growing into place. None of it says anything the settled state doesn't,
+   so under prefers-reduced-motion it goes entirely rather than being shortened
+   — a 1ms animation is still an animation. */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{
+    animation-duration:0s !important; animation-delay:0s !important;
+    transition-duration:0s !important; transition-delay:0s !important;
+    scroll-behavior:auto !important}
+  .zin,.zout,.modal{animation:none !important}
+  #toast,#toast.on{transform:translateX(-50%)}   /* fade only, no slide */
+  #dragGhost{transform:translate(-50%,-50%)}     /* no tilt */
+}
+
+/* ---------- install hint ----------
+   Shown only once the browser has actually offered `beforeinstallprompt`, or on
+   iOS where it never will and the Share sheet is the only route. Never on first
+   load and never over the capture field. */
+.installbar{display:flex;align-items:center;gap:10px;padding:9px 12px;font-size:12.5px;
+  background:linear-gradient(#12202f,#131720);border-bottom:1px solid var(--line);color:var(--dim);flex:none}
+.installbar b{color:var(--text);font-weight:600}
+.installbar .spacer{flex:1}
+.installbar .btn{flex:none}
 </style>
 </head>
 <body>
@@ -551,7 +738,7 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none}
 <main><div id="view"></div></main>
 
 <div id="modalRoot"></div>
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <script>
 /* =========================================================================
@@ -611,7 +798,7 @@ const LEGACY_KEY='thread.v1';   // the app was called Thread until it wasn't
 let DB = null;
 let MEMONLY = false;   // set if localStorage is unavailable (sandboxed preview)
 
-const SCHEMA=6;   // bump whenever the shape changes; migrate() has to grow a step to match
+const SCHEMA=7;   // bump whenever the shape changes; migrate() has to grow a step to match
 
 function blankDB(){
   return {
@@ -636,7 +823,21 @@ function blankDB(){
         cats:[]             // [{id,name,amount,goalId}] — goalId may point at a threshold goal
       },
       zoom:'day',
-      cursor:null           // dateKey the views are centred on
+      cursor:null,          // dateKey the views are centred on
+      google:{              // the Google Calendar provider's settings (see the GOOGLE section)
+        enabled:false,      // false = local provider, which is also the offline cache
+        clientId:'',        // overrides the build-time default; public by design, not a secret
+        calendarId:'primary',
+        account:null        // the signed-in address, for Settings to name
+      },
+      gqueue:[],            // writes waiting on the network: [{id,op,localId,gcalId,at,tries}]
+      /* local notifications. Off until Settings turns them on, and no schema bump:
+         migrate() backfills anything blankDB() grows, so an older file simply
+         arrives with them off, which is the right default anyway. */
+      notify:false,         // the user's answer, separate from the browser's permission
+      notifSent:[],         // [{k,ts}] — what has already fired, so a reload doesn't repeat it
+      sigHardSince:{},      // {signalKey: iso} — when each hard signal first turned hard
+      installHidden:false   // the install hint was dismissed; don't bring it back
     }
   };
 }
@@ -673,6 +874,34 @@ function migrate(d){
   if(from < 6){                                   // 5 -> 6: completed goals are kept, not hidden
     for(const g of d.goals) if(!('doneAt' in g)) g.doneAt = g.status==='done' ? (g.createdAt||null) : null;
   }
+  if(from < 7){                                   // 6 -> 7: Google Calendar mirror rows
+    for(const e of (d.events||[])) if(!('gcal' in e)) e.gcal=null;
+    d.meta.google = d.meta.google || b.meta.google;
+    d.meta.gqueue = d.meta.gqueue || [];
+  }
+
+  /* The mirror fields have to hold whatever the file claimed: a row with a broken
+     gcal object would be treated as remote and then fail every write against it. */
+  for(const e of (d.events||[])){
+    const g=e.gcal;
+    e.gcal = (g && typeof g==='object' && (g.id===null||typeof g.id==='string'))
+      ? {id:g.id||null, etag:g.etag||null, updated:g.updated||null, cal:g.cal||'primary',
+         own:!!g.own, status:g.status==='cancelled'?'cancelled':'confirmed',
+         link:typeof g.link==='string'?g.link:null, pending:!!g.pending}
+      : null;
+    if(!e.gcal && e.src==='google') e.src='manual';   // a remote row with no remote id isn't one
+  }
+  d.meta.google = (d.meta.google && typeof d.meta.google==='object') ? d.meta.google : b.meta.google;
+  d.meta.google = {
+    enabled:!!d.meta.google.enabled,
+    clientId:String(d.meta.google.clientId||''),
+    calendarId:String(d.meta.google.calendarId||'primary'),
+    account:d.meta.google.account?String(d.meta.google.account):null
+  };
+  d.meta.gqueue = (Array.isArray(d.meta.gqueue)?d.meta.gqueue:[])
+    .filter(x=>x && typeof x==='object' && ['create','patch','delete'].includes(x.op) && x.localId)
+    .map(x=>({id:x.id||uid(), op:x.op, localId:String(x.localId), gcalId:x.gcalId||null,
+              at:x.at||new Date().toISOString(), tries:+x.tries||0}));
   d.meta.listDone = !!d.meta.listDone;
 
   // only real type names may hide a row; anything else would silently blank the list
@@ -877,7 +1106,11 @@ function newEvent(o={}){
     id:uid(), title:'', dateKey:today(), start:9*60, dur:60,
     src:'manual', goalId:null, threadId:null, stepId:null,
     recur:null,    // {every:<days>, until:<dateKey|null>} — manual events only, never step anchors
-    skips:[]       // dateKeys of occurrences dropped out of the series
+    skips:[],      // dateKeys of occurrences dropped out of the series
+    /* the Google mirror. null on a purely local event; on a synced one it carries
+       the remote id that makes undo, cross-tab sync and offline capacity work
+       without the network being there. See the GOOGLE section. */
+    gcal:null      // {id,etag,updated,cal,own,status,link,pending}
   },o);
 }
 
@@ -891,6 +1124,7 @@ function touchThread(t){ t.lastMovement = new Date().toISOString(); }
 /* --- mutations --- */
 function addGoal(g){ DB.goals.push(g); logIt('created',{goalId:g.id,text:g.title}); save(); return g; }
 function deleteGoal(id){
+  for(const e of DB.events) if(e.goalId===id && e.gcal && e.gcal.id) gEnqueue('delete',e);
   DB.events = DB.events.filter(e=>e.goalId!==id);
   DB.goals  = DB.goals.filter(g=>g.id!==id);
   save();
@@ -898,6 +1132,9 @@ function deleteGoal(id){
 function addEvent(e){ DB.events.push(e); save(); return e; }
 function removeEvent(id){
   const m=masterEvent(id); if(!m) return;
+  /* every deletion path goes through here — the event modal, unanchoring, a goal
+     being deleted — so this is the one place the remote delete has to be queued */
+  if(m.gcal) gEnqueue('delete',m);
   if(m.stepId){ const f=findThread(m.threadId); if(f){const s=f.thread.steps.find(s=>s.id===m.stepId); if(s)s.eventId=null;} }
   DB.events = DB.events.filter(x=>x.id!==m.id); save();
 }
@@ -942,14 +1179,19 @@ function eventsOn(k){
 }
 
 /* --- calendar adapter seam ---------------------------------------------
-   v1 is manual entry. A Google Calendar provider drops in here later:
-   list(range) -> [{id,title,dateKey,start,dur,src:'google'}]
-   push(step)  -> creates the remote event (only if write access is enabled)
-   Views + engine only ever talk to CAL, never to DB.events directly for reads.
+   Views and the engine only ever talk to CAL, never to DB.events directly. Two
+   providers live behind it: `local`, which is manual entry and is also the
+   offline cache, and `google`, which syncs the same rows against a real
+   calendar. Both answer through eventsOn(), which is the whole reason the
+   Google provider needed no second read path — see the GOOGLE section.
 ------------------------------------------------------------------------ */
 const CAL = {
-  provider:'local',
-  writable:true,                                  // local store is writable
+  get provider(){ return gOn() ? 'google' : 'local'; },
+  /* `writable` says Ply may schedule, not that the network is up. With a remote
+     provider configured every write is accepted and queued; `online` is the
+     separate question of whether it can be delivered right now. */
+  get writable(){ return true; },
+  get online(){ return this.provider==='local' || (GSTATE==='ready' && navigator.onLine!==false); },
   /* range read — no view calls it yet, but it's the shape a remote provider needs
      and it's covered by tests, so it stays as interface rather than being trimmed */
   list(fromKey,toKey){
@@ -958,22 +1200,569 @@ const CAL = {
     return out;
   },
   on(k){ return eventsOn(k); },
-  /* anchor a step to a slot; returns the created event */
+  /* anchor a step to a slot; returns the local event, always synchronously —
+     two callers mutate what comes back (the all-day flag), and the remote write
+     is queued rather than awaited so scheduling never waits on a network. */
   anchor(goal,thread,step,dateKey,start,dur){
+    const held = step.eventId ? masterEvent(step.eventId) : null;
+    /* Re-anchoring moves the *same* Google event rather than deleting and
+       remaking it, so it keeps its id, its reminders and anyone it was shared
+       with. This is a deliberate local action, so it also wins over whatever
+       time the remote currently holds — `pending` is what tells the next pull
+       that this row is an intent, not a stale read. */
+    if(held && held.gcal && held.gcal.id && held.gcal.status!=='cancelled' && this.provider==='google'){
+      held.title=step.title; held.dateKey=dateKey; held.start=start; held.dur=dur||45;
+      held.allDay=false; held.recur=null; held.skips=[];
+      held.goalId=goal.id; held.threadId=thread.id; held.stepId=step.id;
+      held.gcal.status='confirmed'; held.gcal.own=true;
+      gEnqueue('patch',held); gFlush().catch(gNote);
+      logIt('planned',{goalId:goal.id, threadId:thread.id, stepId:step.id, text:step.title, dateKey});
+      save(); return held;
+    }
     if(step.eventId) removeEvent(step.eventId);
     const ev = addEvent(newEvent({
       title:step.title, dateKey, start, dur:dur||45,
       goalId:goal.id, threadId:thread.id, stepId:step.id
     }));
     step.eventId = ev.id;
+    if(this.provider==='google'){
+      ev.src='google';
+      ev.gcal={id:null, etag:null, updated:null, cal:gCal(), own:true, status:'confirmed', link:null, pending:true};
+      gEnqueue('create',ev); gFlush().catch(gNote);
+    }
     logIt('planned',{goalId:goal.id, threadId:thread.id, stepId:step.id, text:step.title, dateKey});
     save(); return ev;
   },
-  unanchor(step){ if(step.eventId) removeEvent(step.eventId); step.eventId=null; save(); },
-  /* minutes booked in a given day (all sources); all-day items don't consume the budget */
-  loadOn(k){ return eventsOn(k).reduce((n,e)=>n+(e.allDay?0:e.dur),0); },
+  /* removeEvent() queues the remote delete — it is the single choke point every
+     deletion path already went through, so unanchoring needs nothing extra. */
+  unanchor(step){
+    if(step.eventId){ removeEvent(step.eventId); gFlush().catch(gNote); }
+    step.eventId=null; save();
+  },
+  /* minutes booked in a given day — now including whatever the real calendar
+     holds, which is the point of the integration. All-day items stay exempt, and
+     so does an event Google no longer has (it's a tombstone, not a commitment). */
+  loadOn(k){ return eventsOn(k).reduce((n,e)=>n+((e.allDay||gDead(e))?0:e.dur),0); },
   loadWeek(weekStartKey){ let n=0; for(let i=0;i<7;i++) n+=this.loadOn(addDays(weekStartKey,i)); return n; }
 };
+
+/* ===================== [SECTION: GOOGLE] =====================
+   A second CAL provider. One decision drives everything else here: Google is a
+   *sync source into DB.events*, not a read-through. Every remote event lands as a
+   mirror row, so eventsOn() still answers every read, loadOn() still counts the
+   real calendar, and undo, cross-tab adoption and the entire offline story keep
+   working untouched. A read-through provider would have needed a parallel path
+   through all three.
+
+   Two API facts shaped the rest:
+
+   * syncToken cannot be combined with timeMin/timeMax (nor q, orderBy, updatedMin
+     or privateExtendedProperty). So the token-minting full sync is unbounded and
+     the window is applied locally as rows are stored — Google's own "filter
+     client-side" guidance. Every incremental pull after that is tiny.
+   * The browser token model has no refresh tokens, and a silent renewal can be
+     eaten by a popup blocker because it isn't a user gesture. So a background poll
+     that meets a 401 retries once silently and then parks in `stale`, queues its
+     writes and puts a click-to-reconnect chip in the ribbon, rather than
+     pretending it can recover on its own.
+
+   Sync bookkeeping (the sync token, the last-sync stamp) lives in its own
+   localStorage key rather than in DB. It is per-browser cursor state, not user
+   data: keeping it out of DB means a poll that finds nothing changed writes
+   nothing, which is what stops a five-minute timer from firing `storage` in every
+   other tab and wiping their undo stacks.
+------------------------------------------------------------------------ */
+const G_SCOPE = 'https://www.googleapis.com/auth/calendar.events email';
+const G_GIS   = 'https://accounts.google.com/gsi/client';
+const G_API   = 'https://www.googleapis.com/calendar/v3';
+const G_WHO   = 'https://www.googleapis.com/oauth2/v3/userinfo';
+const G_SYNCKEY = 'ply.gcal.sync';        // {token,last} — per-browser, never exported
+const G_LOCKKEY = 'ply.gcal.leader';      // {tab,ts}
+const G_BACK_DAYS = 30, G_FWD_DAYS = 180; // the cached window: a quarter view plus headroom
+const G_POLL  = 5*60*1000;
+const G_LEASE = 90*1000;
+const G_MAXPAGES = 20;                    // a first sync past this falls back to windowed polling
+const G_TAB = Math.random().toString(36).slice(2,10);
+
+/* The build-time default. A Vite `define` replaces the bare identifier; with no
+   build step the <meta> tag is the no-config path, and the Settings field
+   overrides both. A browser client id is public by design — there is nothing
+   here that would be a secret if someone read it out of localStorage. */
+const G_BUILD_ID = (()=>{
+  try{ if(typeof __PLY_GOOGLE_CLIENT_ID__!=='undefined') return String(__PLY_GOOGLE_CLIENT_ID__); }catch(_){}
+  try{ const t=document.querySelector('meta[name="ply-google-client-id"]'); if(t) return String(t.content||''); }catch(_){}
+  return '';
+})();
+
+const gmeta  = ()=> (DB.meta.google = DB.meta.google || {enabled:false, clientId:'', calendarId:'primary', account:null});
+const gqueue = ()=> (DB.meta.gqueue = Array.isArray(DB.meta.gqueue) ? DB.meta.gqueue : []);
+const gCal   = ()=> gmeta().calendarId || 'primary';
+const gOn    = ()=> !!(DB && DB.meta && DB.meta.google && DB.meta.google.enabled);
+const gClientId = ()=> String(gmeta().clientId || G_BUILD_ID || '').trim();
+const gerr   = (kind,msg)=> Object.assign(new Error(msg||kind), {kind});
+
+/* Google will not accept file:// (origin `null`) as an authorized JavaScript
+   origin, so the offline single-file build cannot ever authenticate. Say so in
+   Settings rather than letting the popup fail with a bare redirect_uri_mismatch. */
+function gOriginOK(){
+  try{
+    if(location.protocol==='https:') return true;
+    return location.protocol==='http:' && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+  }catch(_){ return false; }
+}
+
+/* --- per-browser sync cursor --- */
+function gCursor(){
+  try{ return JSON.parse(localStorage.getItem(G_SYNCKEY)||'null') || {token:null,last:null}; }
+  catch(_){ return {token:null,last:null}; }
+}
+function gCursorSet(o){
+  try{ localStorage.setItem(G_SYNCKEY, JSON.stringify(Object.assign(gCursor(),o))); }catch(_){}
+}
+
+/* --- auth ---------------------------------------------------------------- */
+let GTOK=null;          // {token,exp} — memory only, never persisted
+let GSTATE='off';       // off | ready | stale | offline | error
+let GIS=null;           // the GIS token client
+let GPEND=null;         // in-flight token request, shared by concurrent callers
+let GERR=null;
+let GISLOAD=null;
+
+function gLoadGIS(){
+  try{ if(window.google && google.accounts && google.accounts.oauth2) return Promise.resolve(); }catch(_){}
+  if(GISLOAD) return GISLOAD;
+  return GISLOAD = new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src=G_GIS; s.async=true; s.defer=true;
+    s.onload=()=>res();
+    s.onerror=()=>{ GISLOAD=null; rej(gerr('offline','Could not load Google sign-in.')); };
+    document.head.appendChild(s);
+  });
+}
+
+function gTokenClient(){
+  const id=gClientId();
+  if(!id) throw gerr('config','No Google client id yet — add one in Settings.');
+  if(!GIS || GIS.__plyId!==id){
+    GIS = google.accounts.oauth2.initTokenClient({client_id:id, scope:G_SCOPE, callback:()=>{}});
+    GIS.__plyId = id;
+  }
+  return GIS;
+}
+
+/* mode: '' silent renewal | 'consent' the interactive grant */
+function gRequestToken(mode){
+  if(GPEND) return GPEND;
+  GPEND = gLoadGIS().then(()=> new Promise((res,rej)=>{
+    let settled=false;
+    const c=gTokenClient();
+    c.callback = r=>{
+      if(settled) return; settled=true;
+      if(r && r.access_token){
+        GTOK={token:r.access_token, exp:Date.now()+((+r.expires_in||3600)*1000)-60000};
+        GSTATE='ready'; GERR=null; res(GTOK);
+      } else rej(gerr('auth',(r&&r.error_description)||'Google declined the token request.'));
+    };
+    c.error_callback = e=>{ if(settled) return; settled=true; rej(gerr('auth',(e&&e.message)||'Google sign-in was dismissed.')); };
+    try{ c.requestAccessToken({prompt:mode||''}); }
+    catch(e){ settled=true; rej(gerr('auth',e.message)); return; }
+    /* a silent renewal has no user gesture behind it and can be swallowed whole by
+       a popup blocker — never leave the caller hanging on a promise that won't settle */
+    if(!mode) setTimeout(()=>{ if(!settled){ settled=true; rej(gerr('auth','Silent renewal did not come back.')); } },12000);
+  }));
+  const done=()=>{ GPEND=null; };
+  GPEND.then(done,done);
+  return GPEND;
+}
+
+async function gToken(){
+  if(GTOK && GTOK.exp>Date.now()) return GTOK.token;
+  const t=await gRequestToken('');
+  return t.token;
+}
+
+async function gConnect(){
+  if(!gOriginOK()) throw gerr('origin','Google needs an https or localhost origin — this page is '+location.protocol);
+  if(!gClientId()) throw gerr('config','Add your OAuth client id in Settings first.');
+  try{ await gRequestToken(gmeta().account ? '' : 'consent'); }
+  catch(e){ if(!gmeta().account) throw e; await gRequestToken('consent'); }
+  const m=gmeta();
+  m.enabled=true;
+  try{
+    const r=await fetch(G_WHO,{headers:{Authorization:'Bearer '+GTOK.token}});
+    if(r.ok){ const who=await r.json(); m.account=who.email||m.account||null; }
+  }catch(_){ /* the email scope is a nicety; the calendar still works without it */ }
+  save();
+  gStart();
+  await gSync({full:true, reason:'connect'});
+  return m.account;
+}
+
+/* Disconnecting must not cost you your schedule: Ply-owned rows stay as ordinary
+   local events with their step links intact, and only the foreign cache goes. */
+function gDisconnect(){
+  const tok = GTOK && GTOK.token;
+  if(tok){ try{ google.accounts.oauth2.revoke(tok, ()=>{}); }catch(_){} }
+  GTOK=null; GSTATE='off'; GERR=null;
+  DB.events = DB.events.filter(e=>{
+    if(!e.gcal) return true;
+    if(e.stepId){ e.gcal=null; e.src='manual'; return true; }
+    return false;
+  });
+  DB.meta.gqueue=[];
+  const m=gmeta(); m.enabled=false; m.account=null;
+  gCursorSet({token:null,last:null});
+  gStop(); save();
+}
+
+/* --- the wire ------------------------------------------------------------ */
+const gWait = ms => new Promise(r=>setTimeout(r,ms));
+
+async function gapi(path,{method='GET',query=null,body=null,tries=0}={}){
+  const tok=await gToken();
+  const url=G_API+path+(query?('?'+new URLSearchParams(query)):'');
+  let r;
+  try{
+    r=await fetch(url,{
+      method,
+      headers:Object.assign({Authorization:'Bearer '+tok}, body?{'Content-Type':'application/json'}:{}),
+      body: body?JSON.stringify(body):undefined
+    });
+  }catch(_){
+    if(GSTATE==='ready') GSTATE='offline';
+    throw gerr('offline','No route to Google right now.');
+  }
+  if(r.status===401){
+    GTOK=null;
+    if(tries<1) return gapi(path,{method,query,body,tries:tries+1});
+    GSTATE='stale'; throw gerr('auth','Google access expired — reconnect in Settings.');
+  }
+  if(r.status===410) throw gerr('gone','That sync token is no longer valid.');
+  if(r.status===404) throw gerr('missing','That event is no longer in Google.');
+  if(r.status===403 || r.status>=500){
+    if(tries<3){ await gWait(400*Math.pow(2,tries)); return gapi(path,{method,query,body,tries:tries+1}); }
+    throw gerr('api','Google refused the request ('+r.status+').');
+  }
+  if(!r.ok) throw gerr('api','Google returned '+r.status+'.');
+  if(r.status===204) return null;
+  try{ return await r.json(); }catch(_){ return null; }
+}
+
+/* --- mapping ------------------------------------------------------------- */
+const G_TZ = (()=>{ try{ return Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC'; }catch(_){ return 'UTC'; } })();
+
+function gISO(k,mins){
+  const d=parseKey(k); d.setHours(0, Math.max(0,mins||0), 0, 0);   // Date normalises past midnight
+  const p=n=>String(n).padStart(2,'0');
+  const off=-d.getTimezoneOffset(), a=Math.abs(off);
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes())+':00'
+    +(off<0?'-':'+')+p(Math.floor(a/60))+':'+p(a%60);
+}
+function gReadTime(v){
+  if(!v) return null;
+  if(v.date) return {allDay:true, dateKey:v.date, start:0, at:parseKey(v.date).getTime()};
+  const d=new Date(v.dateTime||'');
+  if(isNaN(d.getTime())) return null;
+  return {allDay:false, dateKey:dkey(d), start:d.getHours()*60+d.getMinutes(), at:d.getTime()};
+}
+/* A Google resource -> the fields a mirror row carries. Recurring series arrive
+   already expanded (singleEvents=true), so every instance is its own row with
+   recur:null — occurrenceOf() must never see one. A multi-day all-day event is
+   mirrored on its first day only; Ply's model has no multi-day event, and all-day
+   items are capacity-exempt anyway. */
+function gToRow(ge, calId){
+  const s=gReadTime(ge.start), e=gReadTime(ge.end);
+  if(!s) return null;
+  let dur;
+  if(s.allDay) dur=1440;
+  else if(e && !e.allDay) dur=Math.max(5, Math.round((e.at-s.at)/60000));
+  else dur=60;
+  const priv=(ge.extendedProperties&&ge.extendedProperties.private)||{};
+  return {
+    title:String(ge.summary||'(no title)'),
+    dateKey:s.dateKey, start:s.start, dur, allDay:s.allDay,
+    src:'google', recur:null, skips:[],
+    goalId:priv.plyGoalId||null, threadId:priv.plyThreadId||null, stepId:priv.plyStepId||null,
+    gcal:{id:ge.id, etag:ge.etag||null, updated:ge.updated||null, cal:calId,
+          own:!!priv.plyStepId, status:ge.status||'confirmed',
+          link:ge.htmlLink||null, pending:false}
+  };
+}
+/* A mirror row -> the body Google wants. Built at flush time, never at enqueue
+   time, because two callers mutate the event object after anchor() returns. */
+function gFromRow(e){
+  const body={summary:e.title||'Untitled'};
+  if(e.allDay){ body.start={date:e.dateKey}; body.end={date:addDays(e.dateKey,1)}; }
+  else{
+    body.start={dateTime:gISO(e.dateKey,e.start), timeZone:G_TZ};
+    body.end  ={dateTime:gISO(e.dateKey,e.start+(e.dur||45)), timeZone:G_TZ};
+  }
+  if(e.stepId) body.extendedProperties={private:{
+    plyStepId:String(e.stepId), plyGoalId:String(e.goalId||''), plyThreadId:String(e.threadId||''), plyV:String(SCHEMA)}};
+  return body;
+}
+
+/* --- the window ---------------------------------------------------------- */
+const gWinFrom = ()=> addDays(today(), -G_BACK_DAYS);
+const gWinTo   = ()=> addDays(today(),  G_FWD_DAYS);
+const inWindow = k => k>=gWinFrom() && k<=gWinTo();
+const gDead    = e => !!(e && e.gcal && e.gcal.status==='cancelled');
+
+/* --- the offline queue --------------------------------------------------- */
+const GDONE=new Set();   // jobs flushed this session — an undo must not resurrect them
+
+function gEnqueue(op,row){
+  if(!gOn() || !row) return 0;
+  const q=gqueue(), lid=row.id;
+  if(op==='delete'){
+    const neverSent = q.some(x=>x.localId===lid && x.op==='create');
+    DB.meta.gqueue = q.filter(x=>x.localId!==lid);        // every pending op for this row is moot
+    if(neverSent) return DB.meta.gqueue.length;           // it never reached Google; nothing to delete
+    DB.meta.gqueue.push({id:uid(), op:'delete', localId:lid,
+      gcalId:(row.gcal&&row.gcal.id)||null, at:new Date().toISOString(), tries:0});
+    return DB.meta.gqueue.length;
+  }
+  if(row.gcal) row.gcal.pending=true;
+  if(q.some(x=>x.localId===lid)) return q.length;         // already queued; the payload is read at flush
+  q.push({id:uid(), op, localId:lid, gcalId:(row.gcal&&row.gcal.id)||null,
+          at:new Date().toISOString(), tries:0});
+  return q.length;
+}
+const gPending = ()=> (DB&&DB.meta&&Array.isArray(DB.meta.gqueue)) ? DB.meta.gqueue.length : 0;
+
+let GFLUSH=null;
+function gFlush(){ return GFLUSH || (GFLUSH = gFlushRun().finally(()=>{GFLUSH=null;})); }
+
+async function gFlushRun(){
+  if(!gOn()) return 0;
+  let done=0;
+  while(gqueue().length){
+    const job=gqueue()[0];
+    if(GDONE.has(job.id)){ gqueue().shift(); continue; }
+    const row = job.op==='delete' ? null : DB.events.find(e=>e.id===job.localId);
+    try{
+      if(job.op==='delete'){
+        if(job.gcalId) await gapi('/calendars/'+encodeURIComponent(gCal())+'/events/'+encodeURIComponent(job.gcalId),{method:'DELETE'});
+      } else if(!row){
+        /* the row went away under us (undo, or the goal was deleted) — drop the job */
+      } else if(job.op==='create' || !row.gcal || !row.gcal.id){
+        const r=await gapi('/calendars/'+encodeURIComponent(gCal())+'/events',{method:'POST', body:gFromRow(row)});
+        row.src='google';
+        row.gcal=Object.assign(row.gcal||{}, {id:r&&r.id, etag:(r&&r.etag)||null, updated:(r&&r.updated)||null,
+          cal:gCal(), own:!!row.stepId, status:(r&&r.status)||'confirmed', link:(r&&r.htmlLink)||null, pending:false});
+      } else {
+        const r=await gapi('/calendars/'+encodeURIComponent(gCal())+'/events/'+encodeURIComponent(row.gcal.id),
+          {method:'PATCH', body:gFromRow(row)});
+        Object.assign(row.gcal, {etag:(r&&r.etag)||null, updated:(r&&r.updated)||null,
+          status:(r&&r.status)||'confirmed', link:(r&&r.htmlLink)||row.gcal.link||null, pending:false});
+      }
+      GDONE.add(job.id); gqueue().shift(); done++; save();
+    }catch(err){
+      /* already gone in Google is a finished delete, not a failure */
+      if(err.kind==='missing' || (err.kind==='gone' && job.op==='delete')){
+        GDONE.add(job.id); gqueue().shift();
+        if(row&&row.gcal) row.gcal.pending=false;
+        save(); continue;
+      }
+      /* nothing deliverable right now: stop, keep the order, try again on reconnect */
+      if(err.kind==='offline'||err.kind==='auth'||err.kind==='config'||err.kind==='origin'){ GERR=err.message; break; }
+      job.tries=(job.tries||0)+1;
+      if(job.tries>=5){ GERR=err.message; gqueue().shift(); save(); continue; }
+      break;
+    }
+  }
+  if(!gqueue().length && GERR) GERR=null;   // nothing outstanding, nothing to report
+  if(done) render();
+  return done;
+}
+
+/* --- sync ---------------------------------------------------------------- */
+/* One tab syncs. Without this every tab polls, and each poll's save() fires
+   `storage` in the others, whose adoptExternal() throws their undo stack away. */
+function gLease(){
+  if(MEMONLY) return true;
+  try{
+    const now=Date.now();
+    const cur=JSON.parse(localStorage.getItem(G_LOCKKEY)||'null');
+    if(cur && cur.tab!==G_TAB && (now-cur.ts)<G_LEASE) return false;
+    localStorage.setItem(G_LOCKKEY, JSON.stringify({tab:G_TAB, ts:now}));
+    return true;
+  }catch(_){ return true; }
+}
+
+let GSYNC=null;
+function gSync(opts={}){
+  if(!gOn()) return Promise.resolve({skipped:'off'});
+  if(!gLease()) return Promise.resolve({skipped:'follower'});
+  if(GSYNC) return GSYNC;
+  GSYNC = gSyncRun(opts).finally(()=>{GSYNC=null;});
+  return GSYNC;
+}
+
+async function gSyncRun({full=false, reason='poll'}={}){
+  await gFlush();                                  // our own writes land before we read back
+  const cal=encodeURIComponent(gCal());
+  let token = full ? null : gCursor().token;
+  let page=null, next=null, pages=0;
+  const items=[];
+  do{
+    const q = token
+      ? {syncToken:token, singleEvents:'true', showDeleted:'true', maxResults:'2500'}
+      : {singleEvents:'true', showDeleted:'true', maxResults:'2500'};
+    if(page) q.pageToken=page;
+    let r;
+    try{ r=await gapi('/calendars/'+cal+'/events',{query:q}); }
+    catch(err){
+      if(err.kind==='gone'){ gCursorSet({token:null}); return gSyncRun({full:true, reason:'410'}); }
+      GERR=err.message; renderSignals(); throw err;
+    }
+    items.push(...(r.items||[]));
+    page=r.nextPageToken||null;
+    next=r.nextSyncToken||next;
+    /* a calendar with a decade of history would page forever on the first sync.
+       Stop, keep what we have, and carry on with full window pulls instead. */
+    if(++pages>=G_MAXPAGES){ page=null; next=null; }
+  } while(page);
+
+  const n=gApply(items,{cal:gCal(), replace:!token});
+  gCursorSet({token:next||null, last:new Date().toISOString()});
+  GSTATE='ready'; GERR=null;
+  if(n){ save(); render(); } else { renderSignals(); }
+  return {n, seen:items.length, incremental:!!token, reason};
+}
+
+/* Returns how many local rows actually changed, so a quiet poll writes nothing. */
+function gApply(items,{cal,replace}){
+  let n=0;
+  const seen=new Set();
+  const byId=new Map();
+  for(const e of DB.events) if(e.gcal && e.gcal.id) byId.set(e.gcal.id, e);
+
+  for(const ge of items){
+    if(!ge || !ge.id) continue;
+    seen.add(ge.id);
+    const cur=byId.get(ge.id);
+    if(ge.status==='cancelled'){ n+=gCancel(cur)?1:0; continue; }
+    const row=gToRow(ge,cal);
+    if(!row){ n+=gCancel(cur)?1:0; continue; }
+    if(!inWindow(row.dateKey)){ if(cur && !cur.stepId) n+=gDrop(cur)?1:0; continue; }
+    if(!cur){ gAdopt(row); byId.set(ge.id, DB.events[DB.events.length-1]); n++; continue; }
+    n+=gMerge(cur,row)?1:0;
+  }
+
+  if(replace){
+    for(const e of DB.events.slice()){
+      if(!e.gcal || !e.gcal.id || seen.has(e.gcal.id)) continue;   // a queued create has no id yet
+      n += (inWindow(e.dateKey) ? gCancel(e) : gDrop(e)) ? 1 : 0;
+    }
+  }
+  for(const e of DB.events.slice())
+    if(e.gcal && !e.stepId && !inWindow(e.dateKey)) n+=gDrop(e)?1:0;
+  return n;
+}
+
+/* Deleted in Google. A row that carries a step keeps its link and is tombstoned,
+   so signals() raises "not on the calendar" instead of the app quietly
+   unanchoring a commitment you never said you'd dropped. */
+function gCancel(e){
+  if(!e) return false;
+  if(e.stepId){
+    if(e.gcal && e.gcal.status==='cancelled') return false;
+    e.gcal=Object.assign(e.gcal||{}, {status:'cancelled', pending:false});
+    return true;
+  }
+  return gDrop(e);
+}
+function gDrop(e){
+  if(!e) return false;
+  const i=DB.events.indexOf(e);
+  if(i<0) return false;
+  DB.events.splice(i,1);
+  return true;
+}
+function gAdopt(row){
+  const ev=addEvent(newEvent(Object.assign({},row)));
+  /* an event Ply created on another device comes home and finds its step */
+  if(row.stepId){
+    const f=findStep(row.stepId);
+    if(f){
+      const held = f.step.eventId ? masterEvent(f.step.eventId) : null;
+      if(!held || gDead(held) || held===ev) f.step.eventId=ev.id;
+    }
+  }
+  return ev;
+}
+/* Conflict rules: remote wins for time and title, Ply wins for the step link.
+   "Remote wins" means a change Ply did not originate — a re-anchor we haven't
+   delivered yet is a local intent, not a stale read, so `pending` holds it. */
+function gMerge(cur,row){
+  let changed=false;
+  const pending = !!(cur.gcal && cur.gcal.pending);
+  const newer = !cur.gcal || !cur.gcal.updated || !row.gcal.updated || row.gcal.updated > cur.gcal.updated;
+  if(!pending && newer){
+    for(const f of ['title','dateKey','start','dur','allDay'])
+      if(cur[f]!==row[f]){ cur[f]=row[f]; changed=true; }
+  }
+  if(cur.stepId && !row.stepId){
+    gEnqueue('patch',cur); changed=true;          // someone stripped our property — put it back
+  } else if(!cur.stepId && row.stepId){
+    cur.stepId=row.stepId; cur.goalId=row.goalId; cur.threadId=row.threadId; changed=true;
+  }
+  const g=cur.gcal||(cur.gcal={});
+  if(g.status==='cancelled'){ g.status=row.gcal.status||'confirmed'; changed=true; }   // put back in Google
+  g.etag=row.gcal.etag; g.updated=row.gcal.updated; g.link=row.gcal.link||g.link||null;
+  g.own = g.own || row.gcal.own; g.cal = g.cal || row.gcal.cal;
+  if(cur.src!=='google'){ cur.src='google'; changed=true; }
+  return changed;
+}
+
+/* An event that lives in Google and isn't one of ours. Ply shows it and counts it
+   against the day, but doesn't pretend to own it: it is edited where it was made. */
+const gForeign = e => !!(e && e.gcal && !e.stepId);
+
+/* Settings writes straight into meta. Changing the calendar invalidates the sync
+   cursor — a token is scoped to the collection that minted it. */
+function gReadPrefs(){
+  const m=gmeta(), a=$('#pfGId'), b=$('#pfGCal');
+  if(a) m.clientId=String(a.value||'').trim();
+  if(b){
+    const cal=String(b.value||'').trim()||'primary';
+    if(cal!==m.calendarId){ m.calendarId=cal; gCursorSet({token:null}); }
+  }
+}
+
+/* --- scheduling ---------------------------------------------------------- */
+let GTIMER=null, GWIRED=false;
+function gTick(){ if(!document.hidden) gSync({reason:'poll'}).catch(gNote); }
+function gWake(){ if(!document.hidden) gSync({reason:'focus'}).catch(gNote); }
+function gOnline(){ gFlush().then(()=>gSync({reason:'online'})).catch(gNote); }
+function gNote(err){ GERR=(err&&err.message)||String(err); try{ renderSignals(); }catch(_){} }
+
+function gStart(){
+  if(!gOn()) return;
+  if(!GWIRED){
+    window.addEventListener('focus', gWake);
+    document.addEventListener('visibilitychange', gWake);
+    window.addEventListener('online', gOnline);
+    GWIRED=true;
+  }
+  if(!GTIMER) GTIMER=setInterval(gTick, G_POLL);
+}
+function gStop(){ if(GTIMER){ clearInterval(GTIMER); GTIMER=null; } }
+
+/* --- the ribbon's own chips ---------------------------------------------
+   These aren't goal-scoped, so they don't belong in signals() and must not be
+   snoozeable: a queued write is a fact about the app, not a nag about a thread. */
+function gChips(){
+  if(!gOn()) return [];
+  const out=[];
+  const n=gPending();
+  if(n) out.push({cls:'', act:'gsync', text:n+' change'+(n>1?'s':'')+' waiting to sync'});
+  if(GSTATE==='stale') out.push({cls:'hard', act:'gconnect', text:'Google access expired &mdash; reconnect'});
+  else if(GERR && !n) out.push({cls:'mute', act:'gsync', text:'Calendar sync: '+esc(GERR)});
+  return out;
+}
+
 
 /* ===================== [SECTION: BUDGET] =====================
    A weekly pot of money split across categories. Allocation, not a ledger — there's
@@ -1061,7 +1850,11 @@ function loadBar(k,opts={}){
 
 /* --- export / import --- */
 function exportJSON(){
-  const out=Object.assign({app:'ply', schema:SCHEMA, exportedAt:new Date().toISOString()}, DB);
+  /* Foreign Google rows are a cache, not your data: they re-derive on the next
+     sync, and an export you mail to yourself shouldn't carry your work calendar
+     inside it. Ply-owned rows stay — they carry the step link. */
+  const out=Object.assign({app:'ply', schema:SCHEMA, exportedAt:new Date().toISOString()}, DB,
+    {events: DB.events.filter(e=>!e.gcal || !!e.stepId)});
   const blob = new Blob([JSON.stringify(out,null,2)],{type:'application/json'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob); a.download='ply-'+today()+'.json'; a.click();
@@ -1450,9 +2243,13 @@ function _activeItems(){
     for(const t of g.threads){
       if(t.status==='dormant'||t.status==='done') continue;
       const s=currentStep(t); if(!s) continue;
-      const ev = s.eventId?eventById(s.eventId):null;
+      /* An event Google no longer has keeps its link (so the signal can say what
+         happened) but stops behaving like a slot — otherwise the step would sit
+         on a day it isn't booked for and never reach the unscheduled tray. */
+      const held = s.eventId?eventById(s.eventId):null;
+      const ev = (held && !gDead(held)) ? held : null;
       out.push({goal:g, thread:t, step:s, ev, dateKey:ev?ev.dateKey:null, start:ev?ev.start:null,
-                quadrant:s.quadrant, blocked:t.status==='blocked'});
+                quadrant:s.quadrant, blocked:t.status==='blocked', lostSlot:!!(held&&!ev)});
     }
   }
   return out;
@@ -1511,12 +2308,17 @@ function _signals(){
       if(t.needsBranch) out.push({sev:'hard',kind:'branch',goal:g,thread:t,days:q,
         text:'Branch unresolved — which way did it go?'});
       const s=currentStep(t);
+      /* A step whose event was deleted in Google raises this same signal rather
+         than being silently unanchored. Dropping a commitment has to be something
+         you did, not something the sync did to you while you weren't looking. */
+      const held = s && s.eventId ? eventById(s.eventId) : null;
+      const lost = !!(s && s.eventId && (!held || gDead(held)));
       if(!s) out.push({sev:'hard',kind:'nostep',goal:g,thread:t,days:q, text:'No next step defined'});
-      else if(!s.eventId && g.type!=='task') out.push({sev:'warn',kind:'unscheduled',goal:g,thread:t,days:q,
-        text:'Next step not on the calendar'});
-      else if(s.eventId){ const e=eventById(s.eventId);
-        if(e && e.dateKey<T) out.push({sev:'hard',kind:'slipped',goal:g,thread:t,days:daysBetween(e.dateKey,T),
-          text:'Slipped '+daysBetween(e.dateKey,T)+'d past its slot'}); }
+      else if((!s.eventId || lost) && g.type!=='task') out.push({sev:'warn',kind:'unscheduled',goal:g,thread:t,days:q,
+        text: lost ? 'Removed from Google Calendar — not booked any more' : 'Next step not on the calendar'});
+      else if(held){
+        if(held.dateKey<T) out.push({sev:'hard',kind:'slipped',goal:g,thread:t,days:daysBetween(held.dateKey,T),
+          text:'Slipped '+daysBetween(held.dateKey,T)+'d past its slot'}); }
       // decisions get a long leash and only nudge at 2x cadence
       const limit = quietLimit(g);
       if(limit>0 && q>limit) out.push({sev:q>limit*2?'hard':'warn',kind:'quiet',goal:g,thread:t,days:q,
@@ -1585,7 +2387,8 @@ function checkinAgenda(){
       const s=currentStep(t);
       if(!s){ nostep.push({goal:g,thread:t}); continue; }
       if(!moved.has(t.id)) quiet.push({goal:g,thread:t,step:s,days:daysQuiet(t)});
-      if(!s.eventId) unsched.push({goal:g,thread:t,step:s});
+      const bk = s.eventId ? eventById(s.eventId) : null;
+      if(!s.eventId || !bk || gDead(bk)) unsched.push({goal:g,thread:t,step:s});
     }
   }
   return {gates:openGates(), quiet, blocked, nostep, unsched, branch, hush, since};
@@ -1669,6 +2472,7 @@ function renderBody(){
   if(due) b.textContent = n?('due · '+n):'due';
   $('#btnCheckin').classList.toggle('primary', due);
   paintUndo();
+  renderInstallBar();
   wireView();
   restoreView(keep);
 }
@@ -1823,8 +2627,13 @@ function sigFixAct(act,btn){
 
 function renderSignals(){
   const sig=signals(); const r=$('#signals');
-  r.classList.toggle('empty', sig.length===0);
-  if(!sig.length){ r.innerHTML=''; SIGOPEN=null; return; }
+  /* The provider's own chips sit ahead of the groups and are deliberately not
+     snoozeable: "three changes waiting to sync" is a fact about the app, not a
+     nag about a thread, and muting it would just lose the writes quietly. */
+  const pins=gChips().map(c=>
+    `<div class="sig ${c.cls}" data-gact="${c.act}">${c.text}</div>`).join('');
+  r.classList.toggle('empty', sig.length===0 && !pins);
+  if(!sig.length){ r.innerHTML=pins; SIGOPEN=null; return; }
 
   const byKind={}, groups=[];
   for(const s of sig){
@@ -1871,7 +2680,7 @@ function renderSignals(){
   }
   // the resolver sits under the ribbon so it reads as an answer to the chip above it
   const fixPanel = fix ? sigResolverHTML(fix) : '';
-  r.innerHTML=`<div class="sigrow">${chips}${more}</div>${panel}${fixPanel}`;
+  r.innerHTML=`<div class="sigrow">${pins}${chips}${more}</div>${panel}${fixPanel}`;
   if(fix){ const f=$('#fxStep')||$('#fxTrig')||$('#fxDate')||$('#fxWhen'); if(f) setTimeout(()=>f.focus(),20); }
 }
 
@@ -1923,8 +2732,8 @@ function dayStripHTML(k,{drop=false}={}){
     ticks+=`<div class="hr" style="left:${calPos(h*60)}%"></div><div class="hrlbl" style="left:${calPos(h*60)}%">${fmtTime(h*60)}</div>`;}
   const lanes=timed.map(e=>{
     const l=calPos(e.start), w=Math.max(3,calPos(e.start+e.dur)-l);
-    return `<div class="${e.stepId?'ev step':'ev'}" data-ev="${e.id}" style="left:${l}%;width:${w}%">${
-      e.recur?'&#8635; ':''}${esc(e.title)}</div>`;}).join('');
+    return `<div class="ev${e.stepId?' step':''}${gForeign(e)?' ro':''}${gDead(e)?' gone':''}" data-ev="${e.id}"
+      style="left:${l}%;width:${w}%">${e.recur?'&#8635; ':''}${esc(e.title)}</div>`;}).join('');
   const now = k===today() ? `<div class="now" style="left:${calPos(nowMin())}%"></div>` : '';
   const L=loadState(k);
   return `<div class="strip">
@@ -1932,9 +2741,10 @@ function dayStripHTML(k,{drop=false}={}){
       <span class="tiny ${L.over?'overtxt':'muted'}">${hrs(L.mins)} of a ${hrs(L.budget)} day${
         L.over?' — over by '+hrs(L.mins-L.budget):''}</span></div>
     ${loadBar(k,{always:true})}
-    <div class="track${drop?' droppable':''}"${drop?' data-caldrop="1"':''}>${ticks}${lanes}${now}<div class="dropline"></div></div>
+    <div class="trackwrap"><div class="track${drop?' droppable':''}"${drop?' data-caldrop="1"':''}>${ticks}${lanes}${now}<div class="dropline"></div></div></div>
     ${allday.length?`<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">${allday.map(e=>
-      `<span class="evchip ${e.stepId?'step':''}" data-ev="${e.id}">${e.recur?'&#8635; ':''}${esc(e.title)}</span>`).join('')}</div>`:''}
+      `<span class="evchip ${e.stepId?'step':''}${gForeign(e)?' ro':''}${gDead(e)?' gone':''}" data-ev="${e.id}">${
+        e.recur?'&#8635; ':''}${esc(e.title)}</span>`).join('')}</div>`:''}
   </div>`;
 }
 
@@ -2803,6 +3613,7 @@ function openModal(html,opts={}){
     ? document.activeElement : null;
   root.innerHTML=`<div class="scrim"><div class="modal ${opts.wide?'wide':''}" role="dialog" aria-modal="true" tabindex="-1">${html}</div></div>`;
   const m=$('.modal',root);
+  document.body.classList.add('modal-open');
   const inp=root.querySelector('input,select,textarea');
   if(inp&&!opts.nofocus) setTimeout(()=>inp.focus(),30);
   // only claim focus if nothing inside has it — otherwise this steals the caret from
@@ -2824,6 +3635,7 @@ $('#modalRoot').addEventListener('keydown',e=>{
 });
 function closeModal(){
   $('#modalRoot').innerHTML='';
+  document.body.classList.remove('modal-open');
   disarm(); GEROW=null; CONFIRM_CB=null;
   if(RETURN_FOCUS){ const el=RETURN_FOCUS; RETURN_FOCUS=null;
     if(document.body.contains(el)) try{ el.focus(); }catch(_){} }
@@ -2854,7 +3666,7 @@ function disarm(){ clearTimeout(ARMED_T); ARMED=null; }
 function repaintArmed(){
   const m=$('.mbody[data-goal]');
   if(m){ refreshGoal(m.dataset.goal); return; }
-  if($('[data-ui="pf-forget"]')) openPrefs();
+  if($('#pfMode')) openPrefs();        // the Settings panel: it owns two armed controls now
 }
 const armLabel=(key,normal,armed)=> ARMED===key ? armed : normal;
 
@@ -3119,6 +3931,8 @@ function wireDrag(){
 }
 let swallowClick=false;
 $('#signals').onclick=e=>{
+  const ga=e.target.closest('[data-gact]');
+  if(ga){ gAct(ga.dataset.gact); return; }
   const zz=e.target.closest('[data-snooze]');
   if(zz){ e.stopPropagation(); snoozeSignals(zz.dataset.snooze.split('|')); return; }
   const fx=e.target.closest('[data-fix]');
@@ -3150,6 +3964,27 @@ $('#signals').oninput=e=>{
   el.innerHTML = L.over ? `<span class="overtxt">that day is already ${hrs(L.mins)}</span> against a ${hrs(L.budget)} day`
                         : `${hrs(L.free)} free that day`;
 };
+
+/* The three things a person can do to the provider by hand. None of them takes a
+   checkpoint: connecting, syncing and reconnecting are not edits to your goals,
+   and putting them on the undo stack would mean Cmd-Z silently signing you out. */
+function gAct(a){
+  if(a==='gsync'){
+    toast('Syncing with Google\u2026');
+    gFlush().then(()=>gSync({full:false, reason:'manual'}))
+      .then(r=>toast(r && r.skipped==='follower' ? 'Another tab is syncing.' : 'Calendar synced.'))
+      .catch(err=>toast(err.message||'Sync failed.'));
+    return;
+  }
+  if(a==='gconnect'){
+    gConnect().then(acct=>{ render(); toast(acct?('Connected as '+acct+'.'):'Google Calendar connected.'); })
+              .catch(err=>{ GERR=err.message; renderSignals(); toast(err.message||'Could not connect.'); });
+    return;
+  }
+  if(a==='gdisconnect'){
+    gDisconnect(); render(); toast('Disconnected — your schedule stayed put, as local events.');
+  }
+}
 
 function toggleStep(gid,tid,sid){
   const f=findStep(sid); if(!f) return;
@@ -3184,6 +4019,25 @@ function openDefineNext(g,t){
 function openEvent(id){
   const e = id?eventById(id):newEvent({dateKey:DB.meta.cursor});
   const m = id?masterEvent(id):null;
+  /* Somebody else's calendar entry. It shows, and it counts against the day, but
+     the fields would be a lie: saving them here would be overwritten by the next
+     pull, and Ply has no business rewriting a meeting it didn't create. */
+  if(gForeign(e)){
+    const L0=loadState(e.dateKey);
+    openModal(`<h3>From Google Calendar<button class="btn ghost x" data-close>&times;</button></h3>
+      <div class="mbody">
+        <div class="sec"><b style="color:var(--text)">${esc(e.title)}</b>
+          <div class="tiny muted" style="margin-top:4px">${fmtFull(e.dateKey)}${
+            e.allDay?' &mdash; all day':' &mdash; '+fmtTime(e.start)+', '+hrs(e.dur)}</div></div>
+        <div class="sec tiny muted">This one came from your calendar, so it's read-only here &mdash;
+          change it in Google and the next sync brings it across. It still counts against the day:
+          ${fmtDate(e.dateKey)} holds ${hrs(L0.mins)} of a ${hrs(L0.budget)} day${L0.over?' — already over':''}.</div>
+      </div>
+      <div class="mfoot">${e.gcal&&e.gcal.link
+        ? `<a class="btn" href="${esc(e.gcal.link)}" target="_blank" rel="noopener">Open in Google Calendar</a>`:''}
+        <span class="spacer"></span><button class="btn" data-close>Close</button></div>`);
+    return;
+  }
   const rec = (m&&m.recur)||null;
   const anchored = !!e.stepId;                       // step anchors are single commitments
   const L = loadState(e.dateKey);
@@ -3213,7 +4067,8 @@ function openEvent(id){
       </div>`}
 
       <div class="sec tiny muted">${fmtDate(e.dateKey)} currently holds ${hrs(L.mins)} of a ${hrs(L.budget)} day${L.over?' — already over':''}.
-        <br>Calendar source: ${esc(e.src)}. Google Calendar sync plugs into the same adapter later.</div>
+        <br>Calendar source: ${esc(e.src)}${e.gcal&&e.gcal.id?' &mdash; synced':(e.gcal?' &mdash; waiting to sync':'')}.${
+        gDead(e)?' <b style="color:var(--warn)">Deleted in Google.</b> Saving puts it back.':''}</div>
     </div>
     <div class="mfoot">
       ${id?`<button class="btn danger" data-ui="ev-del" data-id="${e.id}">Delete${m&&m.recur?' series':''}</button>`:''}
@@ -3497,7 +4352,9 @@ const ACT_LABEL={
   'sub-add':'that subtask', 'sub-del':'removing that subtask',
   'sub-up':'that reorder', 'sub-down':'that reorder', 'rename':'that rename',
   'entry-add':'that pipeline entry', 'ev-skip':'skipping that occurrence',
-  'pf-forget':'forgetting the learned types', finish:'completing that goal'
+  'pf-forget':'forgetting the learned types', finish:'completing that goal',
+  'g-connect':'connecting Google Calendar', 'g-off':'disconnecting Google Calendar',
+  'g-sync':'that sync'
 };
 
 function uiAct(a,btn){
@@ -3541,11 +4398,48 @@ function uiAct(a,btn){
     m.checkinMode=$('#pfMode').value; m.checkinDow=+$('#pfDow').value; m.checkinEveryDays=+$('#pfN').value||7;
     m.projects=$('#pfProj').value.split(',').map(s=>s.trim()).filter(Boolean);
     if($('#pfBudget')) m.dayBudgetMins=+$('#pfBudget').value||240;
+    gReadPrefs();
     save(); closeModal(); render(); toast('Settings saved.');
+  }
+  if(a==='pwa-install'){
+    doInstall().then(out=>{
+      if($('.modal')) openPrefs();
+      toast(out==='accepted'?'Installing \u2014 Ply will open on its own.'
+        : out==='unavailable'?'Your browser hasn\'t offered to install Ply here.'
+        : 'Left it in the browser.');
+    });
+    return;
+  }
+  if(a==='pwa-later'){ DB.meta.installHidden=true; save(); renderInstallBar(); return; }
+  if(a==='notif-toggle'){
+    if(notifWanted()){ notifDisable(); if($('.modal')) openPrefs(); toast('Notifications off.'); return; }
+    notifEnable().then(p=>{
+      if($('.modal')) openPrefs();
+      toast(p==='granted'?'Notifications on \u2014 steps, hard signals and the check-in.'
+        : p==='denied'?'Your browser blocked them. The ribbon still says everything they would have.'
+        : p==='unsupported'?'This browser has no Notifications API.'
+        : 'Not now, then.');
+    });
+    return;
   }
   if(a==='pf-forget'){
     if(!armConfirm('pf-forget')) return;      // Settings is open, so arm the button rather than stack a dialog
     DB.meta.learned=[]; save(); openPrefs(); toast('Forgotten — back to the rules alone.');
+  }
+  if(a==='g-connect'){
+    gReadPrefs(); save();
+    toast('Opening Google sign-in\u2026');
+    gConnect().then(acct=>{ openPrefs(); render(); toast(acct?('Connected as '+acct+'.'):'Google Calendar connected.'); })
+              .catch(err=>{ GERR=err.message; openPrefs(); toast(err.message||'Could not connect.'); });
+  }
+  if(a==='g-sync'){
+    gFlush().then(()=>gSync({reason:'manual'}))
+      .then(()=>{ openPrefs(); toast('Calendar synced.'); })
+      .catch(err=>toast(err.message||'Sync failed.'));
+  }
+  if(a==='g-off'){
+    if(!armConfirm('g-off')) return;          // Settings is open: arm in place rather than stack a dialog
+    gDisconnect(); openPrefs(); render(); toast('Disconnected — your schedule stayed put, as local events.');
   }
   if(a==='cv-save'){
     const src=goalById(btn.dataset.id);
@@ -3676,12 +4570,329 @@ function openPrefs(){
             >${armLabel('pf-forget','Forget all','Really forget all '+m.learned.length+'?')}</button>`
           : `<div class="tiny muted">Nothing learned yet. Correcting a goal's type &mdash; in the check-in or the goal
               editor &mdash; teaches the classifier to read similar phrases the same way next time.</div>`}</div>
-      <div class="sec"><h4>Calendar</h4>
-        <div class="tiny muted">Source: <b>local (manual entry)</b>. Google Calendar sync drops into the <span class="mono">CAL</span> adapter &mdash;
-        views and the engine never touch the store directly, so read-only or read/write both slot in without touching the goal model.</div></div>
+      <div class="sec"><h4>Notifications</h4>
+        ${notifPrefsHTML()}</div>
+      <div class="sec"><h4>Install</h4>
+        ${installPrefsHTML()}</div>
+      <div class="sec"><h4>Google Calendar</h4>
+        ${gPrefsHTML()}</div>
       ${MEMONLY?'<div class="sec" style="border-color:#5a2b2b"><b>Storage unavailable</b><div class="tiny">This session only. Export before closing.</div></div>':''}
     </div>
     <div class="mfoot"><span class="spacer"></span><button class="btn primary" data-ui="pf-save">Save</button></div>`);
+}
+
+/* The Settings panel for the provider. Kept out of openPrefs() because it has
+   three quite different states to say plainly: this page can't authenticate at
+   all, there's no client id yet, or it's connected and here's to whom. */
+function gPrefsHTML(){
+  const m=gmeta(), cur=gCursor();
+  const id=gClientId(), fromBuild=!m.clientId && !!G_BUILD_ID;
+  const field=`<label class="fld" style="margin-top:8px"><span>OAuth client id</span>
+      <input type="text" id="pfGId" value="${esc(m.clientId||'')}"
+        placeholder="${esc(G_BUILD_ID||'123-abc.apps.googleusercontent.com')}"></label>
+    <label class="fld"><span>Calendar</span>
+      <input type="text" id="pfGCal" value="${esc(m.calendarId||'primary')}" placeholder="primary"></label>
+    <div class="tiny muted" style="margin-top:6px">${fromBuild
+      ? 'Using the id this build ships with; type one here to override it.'
+      : 'A browser client id is public by design &mdash; it is not a secret.'}
+      See <b>Google Calendar</b> in the README for how to make one.</div>`;
+
+  if(!gOriginOK()) return `<div class="tiny muted">Google will not accept
+      <span class="mono">${esc(location.protocol)}</span> as an authorized JavaScript origin, so sync is off on this
+      page. Run Ply from <span class="mono">http://localhost</span> (<span class="mono">npm run dev</span>) or an
+      https origin. Everything else works exactly as it does here &mdash; the local provider <i>is</i> the offline cache.</div>`;
+
+  if(!m.enabled) return `<div class="tiny muted">Source: <b>local (manual entry)</b>.
+      Connecting reads your calendar into the day and week load, and puts every step you schedule
+      onto it. Your goals stay here either way.</div>
+    ${field}
+    <button class="btn sm primary" data-ui="g-connect" style="margin-top:10px"
+      ${id?'':'disabled title="Add a client id first"'}>Connect Google Calendar</button>`;
+
+  const n=gPending();
+  return `<div class="tiny muted">Connected${m.account?` as <b style="color:var(--text)">${esc(m.account)}</b>`:''},
+      writing to <b style="color:var(--text)">${esc(m.calendarId||'primary')}</b>.
+      <br>Last sync: ${cur.last?fmtDate(dkey(new Date(cur.last)))+' '+fmtTime(new Date(cur.last).getHours()*60+new Date(cur.last).getMinutes()):'not yet'}${
+      n?` &mdash; <b style="color:var(--warn)">${n} change${n>1?'s':''} waiting</b>`:''}${
+      GSTATE==='stale'?' &mdash; <b style="color:var(--bad)">access expired</b>':''}.</div>
+    ${field}
+    <div class="row" style="margin-top:10px">
+      <button class="btn sm" data-ui="g-sync">Sync now</button>
+      <button class="btn sm ${ARMED==='g-off'?'danger':''}" data-ui="g-off"
+        >${armLabel('g-off','Disconnect','Really disconnect?')}</button>
+    </div>
+    <div class="tiny muted" style="margin-top:6px">Disconnecting keeps everything you've scheduled &mdash;
+      your own events stay as local ones, and only the cached copy of the rest of your calendar goes.</div>`;
+}
+
+/* ===================== [SECTION: PWA] =====================
+   Three things that only exist once Ply is served over https: an installable
+   shell, a cache that survives a tunnel, and a notification that arrives when
+   the app isn't open. All three are additive — a `file://` build loses every
+   one of them and behaves exactly as it did before, which is why each entry
+   point below starts with a guard rather than a try/catch.
+
+   There is no push server. Every notification here is scheduled and fired by
+   this tab; close every tab and nothing arrives. That is a real limitation and
+   it's stated in the README rather than hidden behind a permission prompt.
+   ========================================================================= */
+
+/* The cache name is stamped with SCHEMA, so a shape change to the data is also
+   a new cache: a client running the old bundle against new data was the one
+   failure mode worth designing out. BUILD covers everything else. */
+const BUILD='2026-09-19';
+const SW_URL='sw.js?schema='+SCHEMA+'&build='+BUILD;
+
+/* Registering a service worker from the wrong place fails loudly in the console
+   and silently in the product. Say which of the four reasons it was, once, so
+   Settings can explain itself instead of showing a dead switch. */
+function swBlockedBecause(loc=location, nav=navigator){
+  if(!nav || !('serviceWorker' in nav)) return 'unsupported';
+  if(loc.protocol==='file:') return 'file';
+  const h=loc.hostname||'';
+  const secure = loc.protocol==='https:' || h==='localhost' || h==='127.0.0.1'
+              || h==='[::1]' || h==='::1' || h.endsWith('.localhost');
+  return secure ? null : 'insecure';
+}
+const SW_WHY={
+  unsupported:'This browser has no service worker, so Ply can’t be installed or work offline.',
+  file:'Opened as a file, so there is nothing to install. Serve it over http://localhost or https.',
+  insecure:'Service workers need https (or localhost). This origin is neither.',
+  error:'The service worker did not register.'
+};
+let SWREG=null, SWSTATE=null;
+function registerSW(){
+  const why=swBlockedBecause();
+  if(why){ SWSTATE={ok:false,why}; return Promise.resolve(SWSTATE); }
+  return navigator.serviceWorker.register(SW_URL,{scope:'./'})
+    .then(reg=>{ SWREG=reg; SWSTATE={ok:true,reg}; return SWSTATE; })
+    .catch(err=>{ SWSTATE={ok:false,why:'error',error:err&&err.message}; return SWSTATE; });
+}
+
+/* ---------- install ----------
+   `beforeinstallprompt` is the only honest signal that installing is actually
+   possible: Chrome fires it once the manifest, the icons and the worker all
+   check out. iOS never fires it and never will, so that one case is named
+   rather than guessed at. Neither hint is allowed to appear on first load —
+   the first thing a new page does is ask for a goal, not for a commitment. */
+let INSTALL_EVT=null;
+function standalone(){
+  try{ return matchMedia('(display-mode: standalone)').matches || navigator.standalone===true; }
+  catch(_){ return false; }
+}
+function iosWeb(){
+  const ua=navigator.userAgent||'';
+  return /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints>1);
+}
+/* null = say nothing. The dismissal is remembered, because a bar you closed and
+   that came back is worse than no bar. */
+function installHint(){
+  if(standalone() || (DB&&DB.meta&&DB.meta.installHidden)) return null;
+  if(INSTALL_EVT) return {kind:'prompt',
+    text:'Ply runs better installed &mdash; full screen, and it opens offline.'};
+  if(iosWeb() && !swBlockedBecause()) return {kind:'ios',
+    text:'Add Ply to your Home Screen: <b>Share</b>, then <b>Add to Home Screen</b>.'};
+  return null;
+}
+function renderInstallBar(){
+  const old=$('#installbar'); if(old) old.remove();
+  const hint=installHint(); if(!hint) return;
+  const bar=el(`<div class="installbar" id="installbar">
+    <span>${hint.text}</span><span class="spacer"></span>
+    ${hint.kind==='prompt'?'<button class="btn sm primary" data-ui="pwa-install">Install</button>':''}
+    <button class="btn sm ghost" data-ui="pwa-later" aria-label="Dismiss">&times;</button></div>`);
+  $('#signals').after(bar);
+}
+function doInstall(){
+  const e=INSTALL_EVT;
+  if(!e) return Promise.resolve('unavailable');
+  INSTALL_EVT=null;
+  try{ e.prompt(); }catch(_){ return Promise.resolve('unavailable'); }
+  return Promise.resolve(e.userChoice).then(c=>{
+    const out=(c&&c.outcome)||'dismissed';
+    renderInstallBar();
+    return out;
+  }).catch(()=>'dismissed');
+}
+
+/* ===================== [SECTION: NOTIFY] =====================
+   Three notifications, and deliberately only three — each one corresponds to a
+   state the app already treats as load-bearing, so nothing new has to be
+   invented to decide what is worth interrupting someone for:
+
+     step      a slot you committed to starts in fifteen minutes
+     hard      a hard signal has been hard for a full day
+     checkin   the check-in is due
+
+   Everything else stays in the ribbon, where it costs nothing to ignore.
+
+   Permission is never requested on load. Capture is the first thing the page
+   offers and a permission sheet on top of it is the fastest way to teach
+   someone to deny it; the prompt only ever comes from the Settings toggle.
+   ========================================================================= */
+const NOTIF_LEAD_MIN=15;      // a step warns this far ahead
+const NOTIF_HARD_H=24;        // a hard signal has to have been hard this long
+const NOTIF_WINDOW_MIN=30;    // a phone that was asleep still gets it; an hour later doesn't
+const NOTIF_TICK_MS=60000;
+const NOTIF_KEEP_DAYS=14;
+
+function notifSupported(){ return typeof Notification!=='undefined'; }
+function notifPerm(){ return notifSupported()?Notification.permission:'unsupported'; }
+function notifWanted(){ return !!(DB&&DB.meta&&DB.meta.notify); }
+function notifOn(){ return notifWanted() && notifPerm()==='granted'; }
+
+/* A signal is computed fresh on every render and has no history of its own, so
+   "hard for 24 hours" needs somewhere to start counting. Keys that stop being
+   hard are dropped, which is what makes a fixed-then-broken-again thread start
+   its clock over rather than firing instantly. */
+function notifTrackHard(now=Date.now()){
+  const seen = DB.meta.sigHardSince || (DB.meta.sigHardSince={});
+  const live=new Set();
+  for(const s of signals()){
+    if(s.sev!=='hard') continue;
+    live.add(s.key);
+    if(!seen[s.key]) seen[s.key]=new Date(now).toISOString();
+  }
+  for(const k of Object.keys(seen)) if(!live.has(k)) delete seen[k];
+  return seen;
+}
+
+function notifSentList(){ return DB.meta.notifSent || (DB.meta.notifSent=[]); }
+function notifAlreadySent(k){ return notifSentList().some(x=>x.k===k); }
+function notifMark(k,now=Date.now()){
+  const L=notifSentList();
+  L.push({k, ts:new Date(now).toISOString()});
+  const cut=now-NOTIF_KEEP_DAYS*DAY_MS;
+  DB.meta.notifSent=L.filter(x=>Date.parse(x.ts)>=cut).slice(-300);
+}
+
+/* Everything that should have fired by `now` and hasn't. Pure: it reads the DB
+   and the clock and returns a list, which is the whole reason the scheduling is
+   testable without a browser that can show a notification. */
+function notifPlan(now=Date.now()){
+  const out=[];
+
+  /* 1. a step starting in fifteen minutes. All-day slots have no start, and a
+        step whose event Google dropped isn't booked any more, so neither warns. */
+  for(const it of activeItems()){
+    if(!it.ev || it.ev.allDay || it.dateKey==null || it.start==null) continue;
+    const at = parseKey(it.dateKey).getTime() + it.start*60000 - NOTIF_LEAD_MIN*60000;
+    if(now < at || now >= at + NOTIF_WINDOW_MIN*60000) continue;
+    out.push({kind:'step', key:'step:'+it.step.id+':'+it.dateKey+':'+it.start, at,
+      title:shortName(it.goal),
+      body:it.step.title+' starts at '+fmtTime(it.start)+'.',
+      tag:'ply-step-'+it.step.id});
+  }
+
+  /* 2. a hard signal that has been hard for a day. One per signal per day: the
+        point is that it hasn't moved, and saying so hourly wouldn't help. */
+  const seen=notifTrackHard(now);
+  for(const s of signals()){
+    if(s.sev!=='hard') continue;
+    const since=Date.parse(seen[s.key]||'');
+    if(!since || now-since < NOTIF_HARD_H*3600e3) continue;
+    out.push({kind:'hard', key:'hard:'+s.key+':'+dkey(new Date(now)), at:since+NOTIF_HARD_H*3600e3,
+      title:shortName(s.goal), body:s.text+' — a full day now.', tag:'ply-hard-'+s.key});
+  }
+
+  /* 3. the check-in, once on the day it comes due. */
+  if(checkinDue()){
+    const a=checkinAgenda();
+    const n=a.gates.length+a.quiet.length+a.nostep.length+a.branch.length;
+    out.push({kind:'checkin', key:'checkin:'+today(), at:now, title:'Weekly check-in',
+      body:n?(n+' thing'+(n>1?'s':'')+' to walk through.'):'Ready when you are.', tag:'ply-checkin'});
+  }
+
+  return out.filter(n=>!notifAlreadySent(n.key)).sort((a,b)=>a.at-b.at);
+}
+
+/* The service worker owns the notification where there is one, because a
+   notification shown by a page dies with the page. `new Notification()` is the
+   fallback for a desktop browser with no worker registered. */
+function notifShow(n){
+  const opts={body:n.body, tag:n.tag, icon:'icons/icon-192.png', badge:'icons/icon-192.png',
+              data:{kind:n.kind, key:n.key}, renotify:false};
+  if(SWREG && SWREG.showNotification){
+    try{ return Promise.resolve(SWREG.showNotification(n.title,opts)); }catch(_){}
+  }
+  try{ new Notification(n.title,opts); }catch(_){}
+  return Promise.resolve();
+}
+
+/* Fires what is due and records it. Returns the list it fired, so the suite can
+   assert the scheduling without stubbing the platform's notification object. */
+function notifTick(now=Date.now()){
+  if(!notifOn()) return [];
+  const due=notifPlan(now);
+  for(const n of due){ notifShow(n); notifMark(n.key,now); }
+  if(due.length) save();
+  return due;
+}
+
+let NOTIF_TIMER=null;
+function notifStart(){
+  if(NOTIF_TIMER || !notifOn()) return false;
+  NOTIF_TIMER=setInterval(()=>notifTick(),NOTIF_TICK_MS);
+  notifTick();
+  return true;
+}
+function notifStop(){ if(NOTIF_TIMER){ clearInterval(NOTIF_TIMER); NOTIF_TIMER=null; } }
+
+/* The only place that ever asks. Called from the Settings toggle, never from
+   load, and it refuses politely rather than throwing when the answer is no. */
+function notifEnable(){
+  if(!notifSupported()) return Promise.resolve('unsupported');
+  if(Notification.permission==='denied') return Promise.resolve('denied');
+  if(Notification.permission==='granted'){
+    DB.meta.notify=true; save(); notifStart(); return Promise.resolve('granted');
+  }
+  return Promise.resolve(Notification.requestPermission()).then(p=>{
+    if(p==='granted'){ DB.meta.notify=true; save(); notifStart(); }
+    return p;
+  }).catch(()=>'denied');
+}
+function notifDisable(){ DB.meta.notify=false; save(); notifStop(); }
+
+/* What Settings has to say about all this, in one place, because there are five
+   states and four of them are somebody else's fault. */
+function notifPrefsHTML(){
+  const why=swBlockedBecause();
+  const perm=notifPerm();
+  const on=notifWanted();
+  if(!notifSupported()) return `<div class="tiny muted">This browser has no Notifications API.</div>`;
+  if(perm==='denied') return `<div class="tiny muted">Notifications are blocked for this site in your
+      browser's settings. Ply can't re-ask &mdash; that switch is yours to flip, in the site permissions.</div>`;
+  const lead=`<div class="tiny muted">Three things, fired locally by this tab:
+      a step starting in ${NOTIF_LEAD_MIN} minutes, a hard signal that has stayed hard
+      for ${NOTIF_HARD_H} hours, and the check-in when it comes due.
+      ${why?'':'There is no push server yet, so they only arrive while Ply is open in a tab.'}</div>`;
+  return `${lead}
+    <button class="btn sm ${on?'':'primary'}" data-ui="notif-toggle" style="margin-top:9px">
+      ${on?'Turn notifications off':'Turn notifications on'}</button>
+    ${on&&perm==='default'?'<div class="tiny muted" style="margin-top:6px">Waiting on the browser’s permission prompt.</div>':''}
+    ${why?`<div class="tiny muted" style="margin-top:6px">${SW_WHY[why]} They will still fire while this tab is open.</div>`:''}`;
+}
+
+/* Where a manifest shortcut or a tapped notification lands. Both are just a
+   name for a place in the app, so they share one door. */
+function plyGoTo(what){
+  if(what==='checkin'){ if(!$('.scrim')) startCheckin(); return true; }
+  if(what==='capture'){ const c=$('#capture'); if(c) c.focus(); return true; }
+  return false;
+}
+
+/* Install, as Settings sees it. */
+function installPrefsHTML(){
+  const why=swBlockedBecause();
+  if(standalone()) return `<div class="tiny muted">Running as an installed app.</div>`;
+  if(why) return `<div class="tiny muted">${SW_WHY[why]}</div>`;
+  if(INSTALL_EVT) return `<div class="tiny muted">Your browser is offering to install Ply.</div>
+    <button class="btn sm primary" data-ui="pwa-install" style="margin-top:9px">Install Ply</button>`;
+  if(iosWeb()) return `<div class="tiny muted">On iOS the only route is the Share sheet:
+      <b>Share</b>, then <b>Add to Home Screen</b>.</div>`;
+  return `<div class="tiny muted">Your browser hasn't offered to install Ply on this origin yet.
+      Chrome and Edge offer it once the manifest, the icons and the worker all check out;
+      Firefox and desktop Safari don't offer it at all.</div>`;
 }
 
 /* ===================== [SECTION: SEED] ===================== */
@@ -3890,8 +5101,38 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&$('.scrim')){ closeModal(); CK=null; render(); }
 });
 
+/* The install offer can arrive at any point after load. Catch it, stop the
+   browser's own banner, and let the app place the hint where it won't land on
+   the capture field. */
+window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); INSTALL_EVT=e; renderInstallBar(); });
+window.addEventListener('appinstalled', ()=>{ INSTALL_EVT=null; DB.meta.installHidden=true; save(); renderInstallBar(); });
+
 render();
 wireDrag();          // once — #view outlives every render
+/* The provider starts itself if it was left connected: pull on load, then on
+   focus and every five minutes. Anything queued from last session goes first. */
+if(gOn()){
+  gStart();
+  gFlush().then(()=>gSync({full:!gCursor().token, reason:'load'})).catch(gNote);
+}
+/* The worker is registered on load and the notification timer only starts if
+   Settings already said yes. Neither asks for anything: the permission prompt
+   belongs to the toggle, and a prompt on top of the capture field is how you
+   teach someone to deny it. */
+registerSW().then(()=>{ if(notifOn()) notifStart(); });
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden && notifOn()) notifTick(); });
+
+/* ?go=checkin / ?go=capture — the manifest's two shortcuts, and where the
+   worker sends a tapped notification. */
+try{
+  const go=new URLSearchParams(location.search).get('go');
+  if(go) setTimeout(()=>plyGoTo(go),140);
+  if(navigator.serviceWorker && navigator.serviceWorker.addEventListener)
+    navigator.serviceWorker.addEventListener('message', e=>{
+      if(e.data && e.data.ply==='notificationclick') plyGoTo(e.data.kind==='checkin'?'checkin':'capture');
+    });
+}catch(_){}
+
 /* nudge: if the check-in is due, say so once on load rather than waiting to be noticed */
 if(checkinDue()) setTimeout(()=>toast('Weekly check-in is due — press c'),700);
 </script>
