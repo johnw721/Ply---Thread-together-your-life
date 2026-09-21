@@ -105,13 +105,14 @@ share of capacity; they never become their own `DB.events` row and so never beco
 remote event. Whether a remote calendar should show them is a separate decision, noted in
 Prompt 4's non-goals.
 
-## 7. `stamp.test.js` has no legacy counterpart, and fails on that target
+## 7. `stamp.test.js` had no legacy counterpart, and failed on that target — fixed
 
 `npm run test:legacy` drives every suite against `legacy/index.html`, which is schema 7.
-`stamp.test.js` (schema 8) therefore fails there — not a regression, just a suite with
-nothing to pin against. `footprint.test.js` (schema 9) skips itself on the legacy target
-instead, which is the pattern worth converging on: either gate `stamp.test.js` the same way,
-or teach the legacy config to exclude suites newer than the monolith.
+`stamp.test.js` (schema 8) used to fail there — not a regression, just a suite with
+nothing to pin against. Gated the same way `footprint.test.js` (schema 9) and
+`reschedule.test.js` (schema 10) already were: `const d = isLegacy ? describe.skip : describe;`,
+every top-level `describe(` in the file swapped for `d(`. `[legacy]` now reads 18 skipped
+rather than 12 failed.
 
 ## 8. `'unblock'` is a reserved `AnchorSource` with no call site
 

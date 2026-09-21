@@ -1,10 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { boot, makeGoal, TARGET } from '../harness.js';
+import { boot, makeGoal, TARGET, isLegacy } from '../harness.js';
 
 /* Schema 8: every goal, thread, step and event carries an `updatedAt`, and
    save() — not the mutation sites — is what maintains it. These tests exist
    because the failure mode of a missed stamp is silent: the record simply
-   loses every cross-device merge and the other copy quietly wins. */
+   loses every cross-device merge and the other copy quietly wins.
+
+   Schema 8 postdates the monolith, same as footprint.test.js (schema 9) and
+   reschedule.test.js (schema 10) — there is nothing in legacy/index.html for
+   this to pin, so it's skipped there rather than left to fail. */
+const d = isLegacy ? describe.skip : describe;
 
 let h, p;
 beforeEach(async () => { h = await boot({ seed: false }); p = h.api; });
@@ -13,7 +18,7 @@ beforeEach(async () => { h = await boot({ seed: false }); p = h.api; });
    saves inside the same tick can legitimately share a stamp — advance past it */
 const tick = () => new Promise(r => setTimeout(r, 2));
 
-describe('migrate 7→8 — backfill [' + TARGET + ']', () => {
+d('migrate 7→8 — backfill [' + TARGET + ']', () => {
   const file = () => ({
     schema: 7, log: [], meta: {},
     goals: [{ id: 'g1', title: 'a goal', status: 'active', doneAt: null,
@@ -78,7 +83,7 @@ describe('migrate 7→8 — backfill [' + TARGET + ']', () => {
   });
 });
 
-describe('factories [' + TARGET + ']', () => {
+d('factories [' + TARGET + ']', () => {
   it('stamp every record kind at birth', () => {
     for (const rec of [p.newGoal({}), p.newThread({}), p.newStep('x'), p.newEvent({})]) {
       expect(typeof rec.updatedAt).toBe('string');
@@ -91,7 +96,7 @@ describe('factories [' + TARGET + ']', () => {
   });
 });
 
-describe('save() maintains the stamps [' + TARGET + ']', () => {
+d('save() maintains the stamps [' + TARGET + ']', () => {
   it('stamps only the record that actually moved', async () => {
     const one = makeGoal(p, { title: 'one' });
     const two = makeGoal(p, { title: 'two' });
@@ -165,7 +170,7 @@ describe('save() maintains the stamps [' + TARGET + ']', () => {
   });
 });
 
-describe('who owns a stamp [' + TARGET + ']', () => {
+d('who owns a stamp [' + TARGET + ']', () => {
   it('load() treats what was stored as already written, not as a change', async () => {
     const old = JSON.stringify({
       schema: p.SCHEMA, log: [], events: [], meta: {},
