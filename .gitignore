@@ -1,6 +1,12 @@
 node_modules/
 dist/
+dist-single/
 coverage/
 *.log
 .DS_Store
-dist-single/
+
+# generated mobile visual-regression screenshots and reports
+# (produced locally by `npm run test:mobile`/`test:mobile:shots`, and by the
+# Pages workflow's "Mobile pass" step; CI keeps a copy as an upload-artifact,
+# so none of this needs to live in the working tree or be committed)
+tests/mobile/shots/

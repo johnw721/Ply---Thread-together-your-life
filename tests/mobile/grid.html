@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ply — the phone pass, before and after</title>
+<style>
+:root{--bg:#0e1014;--panel:#161920;--line:#2a303c;--text:#e7eaf1;--dim:#9aa3b5;
+  --good:#4ec9a0;--bad:#ef5f5f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);padding:28px 20px 60px;
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:1100px;margin:0 auto}
+h1{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+.sub{color:var(--dim);margin:0 0 22px}
+h2{font-size:13px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);
+  margin:34px 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px}
+h3{font-size:14px;font-weight:600;margin:20px 0 8px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+figure{margin:0}
+img{width:100%;display:block;border:1px solid var(--line);border-radius:10px;background:#000}
+figcaption{font-size:12px;color:var(--dim);margin-top:6px}
+figcaption b{color:var(--text);font-weight:600;margin-right:6px}
+.ok{color:var(--good)}.bad{color:var(--bad)}
+table{border-collapse:collapse;margin:20px 0 4px;font-size:13px;width:100%;max-width:460px}
+caption{text-align:left;color:var(--dim);font-size:12px;padding-bottom:6px}
+th,td{text-align:left;padding:5px 12px 5px 0;border-bottom:1px solid var(--line)}
+th{color:var(--dim);font-weight:500;font-size:12px}
+.scoreboard{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:0 0 8px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.tile .n{font-size:22px;font-weight:650;letter-spacing:-.02em}
+.tile .n s{color:var(--bad);text-decoration:none;opacity:.8}
+.tile .n em{font-style:normal;color:var(--dim);margin:0 6px}
+.tile .n b{color:var(--good)}
+.tile .k{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);margin-top:4px}
+@media (max-width:700px){.pair{grid-template-columns:1fr}}
+</style></head>
+<body><div class="wrap">
+<h1>Ply — the phone pass</h1>
+<p class="sub">Real markup, real stylesheet, Chromium at 375×812 and 390×844.
+  Left is the build the README described as &ldquo;verified by rendering, not by running&rdquo;; right is after.</p>
+<div class="scoreboard">
+  <div class="tile"><div class="n"><s>721</s><em>&rarr;</em><b>0</b></div>
+    <div class="k">targets under 44px</div></div>
+  <div class="tile"><div class="n"><s>4</s><em>&rarr;</em><b>0</b></div>
+    <div class="k">surfaces clipped off-screen</div></div>
+  <div class="tile"><div class="n"><s>0</s><em>&rarr;</em><b>0</b></div>
+    <div class="k">surfaces scrolling sideways</div></div>
+  <div class="tile"><div class="n"><s>12</s><em>&rarr;</em><b>0</b></div>
+    <div class="k">behavioural checks failing</div></div>
+</div>
+<h2>375x812</h2><section>
+      <h3>Day — strip and matrix</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/375x812--day.png" alt="before">
+          <figcaption class="bad"><b>before</b> 47 of 48 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/375x812--day.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 48 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>Week — seven columns</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/375x812--week.png" alt="before">
+          <figcaption class="bad"><b>before</b> 61 of 62 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/375x812--week.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 62 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>Quarter — roadmap</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/375x812--quarter.png" alt="before">
+          <figcaption class="bad"><b>before</b> 19 of 20 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/375x812--quarter.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 20 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>List — rows and filters</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/375x812--list.png" alt="before">
+          <figcaption class="bad"><b>before</b> 40 of 41 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/375x812--list.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 41 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>Week — budget rows</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/375x812--budget.png" alt="before">
+          <figcaption class="bad"><b>before</b> 61 of 62 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/375x812--budget.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 62 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>Check-in — opening card</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/375x812--checkin.png" alt="before">
+          <figcaption class="bad"><b>before</b> 2 of 2 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/375x812--checkin.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 2 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>Check-in — a question</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/375x812--checkin-2.png" alt="before">
+          <figcaption class="bad"><b>before</b> 4 of 5 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/375x812--checkin-2.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 5 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>Goal editor</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/375x812--goal.png" alt="before">
+          <figcaption class="bad"><b>before</b> content clipped off-screen · 56 of 58 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/375x812--goal.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 58 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>Event modal</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/375x812--event.png" alt="before">
+          <figcaption class="bad"><b>before</b> content clipped off-screen · 10 of 12 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/375x812--event.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 12 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>Settings</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/375x812--settings.png" alt="before">
+          <figcaption class="bad"><b>before</b> 10 of 10 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/375x812--settings.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 11 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>Ribbon resolver</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/375x812--resolver.png" alt="before">
+          <figcaption class="bad"><b>before</b> 50 of 51 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/375x812--resolver.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 51 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>Scheduling row, keyboard open (375×360)</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/375x812--sched-keyboard.png" alt="before">
+          <figcaption><b>before</b></figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/375x812--sched-keyboard.png" alt="after">
+          <figcaption><b>after</b></figcaption></figure>
+      </div></section><section>
+      <h3>Toast over an open dialog</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/375x812--toast.png" alt="before">
+          <figcaption><b>before</b></figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/375x812--toast.png" alt="after">
+          <figcaption><b>after</b></figcaption></figure>
+      </div></section><table><caption>behavioural checks, 375x812</caption>
+    <tr><th>check</th><th>before</th><th>after</th></tr><tr><td>touchDrag</td>
+      <td class="bad">fail</td>
+      <td class="ok">ok</td></tr><tr><td>keyboardRow</td>
+      <td class="bad">fail</td>
+      <td class="ok">ok</td></tr><tr><td>resolver</td>
+      <td class="bad">fail</td>
+      <td class="ok">ok</td></tr><tr><td>toast</td>
+      <td class="bad">fail</td>
+      <td class="ok">ok</td></tr><tr><td>reducedMotion</td>
+      <td class="bad">fail</td>
+      <td class="ok">ok</td></tr><tr><td>pwa</td>
+      <td class="bad">fail</td>
+      <td class="ok">ok</td></tr></table><h2>390x844</h2><section>
+      <h3>Day — strip and matrix</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/390x844--day.png" alt="before">
+          <figcaption class="bad"><b>before</b> 47 of 48 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/390x844--day.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 48 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>Week — seven columns</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/390x844--week.png" alt="before">
+          <figcaption class="bad"><b>before</b> 61 of 62 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/390x844--week.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 62 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>Quarter — roadmap</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/390x844--quarter.png" alt="before">
+          <figcaption class="bad"><b>before</b> 19 of 20 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/390x844--quarter.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 20 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>List — rows and filters</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/390x844--list.png" alt="before">
+          <figcaption class="bad"><b>before</b> 40 of 41 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/390x844--list.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 41 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>Week — budget rows</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/390x844--budget.png" alt="before">
+          <figcaption class="bad"><b>before</b> 61 of 62 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/390x844--budget.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 62 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>Check-in — opening card</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/390x844--checkin.png" alt="before">
+          <figcaption class="bad"><b>before</b> 2 of 2 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/390x844--checkin.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 2 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>Check-in — a question</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/390x844--checkin-2.png" alt="before">
+          <figcaption class="bad"><b>before</b> 5 of 5 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/390x844--checkin-2.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 5 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>Goal editor</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/390x844--goal.png" alt="before">
+          <figcaption class="bad"><b>before</b> content clipped off-screen · 56 of 58 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/390x844--goal.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 58 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>Event modal</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/390x844--event.png" alt="before">
+          <figcaption class="bad"><b>before</b> content clipped off-screen · 10 of 12 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/390x844--event.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 12 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>Settings</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/390x844--settings.png" alt="before">
+          <figcaption class="bad"><b>before</b> 10 of 10 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/390x844--settings.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 11 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>Ribbon resolver</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/390x844--resolver.png" alt="before">
+          <figcaption class="bad"><b>before</b> 50 of 51 targets under 44px</figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/390x844--resolver.png" alt="after">
+          <figcaption class="ok"><b>after</b> clean · 51 targets audited</figcaption></figure>
+      </div></section><section>
+      <h3>Scheduling row, keyboard open (375×360)</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/390x844--sched-keyboard.png" alt="before">
+          <figcaption><b>before</b></figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/390x844--sched-keyboard.png" alt="after">
+          <figcaption><b>after</b></figcaption></figure>
+      </div></section><section>
+      <h3>Toast over an open dialog</h3>
+      <div class="pair">
+        <figure><img loading="lazy" src="shots/before/390x844--toast.png" alt="before">
+          <figcaption><b>before</b></figcaption></figure>
+        <figure><img loading="lazy" src="shots/after/390x844--toast.png" alt="after">
+          <figcaption><b>after</b></figcaption></figure>
+      </div></section><table><caption>behavioural checks, 390x844</caption>
+    <tr><th>check</th><th>before</th><th>after</th></tr><tr><td>touchDrag</td>
+      <td class="bad">fail</td>
+      <td class="ok">ok</td></tr><tr><td>keyboardRow</td>
+      <td class="bad">fail</td>
+      <td class="ok">ok</td></tr><tr><td>resolver</td>
+      <td class="bad">fail</td>
+      <td class="ok">ok</td></tr><tr><td>toast</td>
+      <td class="bad">fail</td>
+      <td class="ok">ok</td></tr><tr><td>reducedMotion</td>
+      <td class="bad">fail</td>
+      <td class="ok">ok</td></tr><tr><td>pwa</td>
+      <td class="bad">fail</td>
+      <td class="ok">ok</td></tr></table>
+<p class="sub" style="margin-top:34px">Generated by <code>tests/mobile/grid.js</code> from the two
+  <code>report.json</code> files. 2026-09-20</p>
+</div></body></html>
