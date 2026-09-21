@@ -122,7 +122,9 @@ export function seed(){
   mk('Sprint review',2,14,60);
 
   const anchor=(g,ti,dayOff,h,dur)=>{ const t=g.threads[ti]; const s=currentStep(t);
-    if(s) CAL.anchor(g,t,s,addDays(today(),dayOff),h*60,dur); };
+    /* The seed stands in for a person who scheduled these, so 'manual' is the
+       honest tag. Inert for churn regardless: each is a first anchor. */
+    if(s) CAL.anchor(g,t,s,addDays(today(),dayOff),h*60,dur,'manual'); };
   anchor(cka,0,0,19,90);          // domain 4 drills tonight
   anchor(cka,1,38,10,180);        // the exam itself
   anchor(pl,0,2,20,60);           // terraform staging
@@ -130,7 +132,11 @@ export function seed(){
   // guitar, cooking, docs, savings, decision deliberately left unscheduled + quiet
 
   /* --- log history so follow-through and streaks are real --- */
-  const L=(kind,g,t,d,text)=>DB.log.push({id:uid(),ts:ago(d),kind,goalId:g.id,threadId:t.id,text,dateKey:addDays(today(),-d)});
+  /* Hand-written history, pushed straight past logIt(). These rows carry no
+     stepId, so rescheduleHistory() never sees them — 'unknown' anyway, for the
+     same reason migrate() backfills it: nothing here recorded a why. */
+  const L=(kind,g,t,d,text)=>DB.log.push({id:uid(),ts:ago(d),kind,goalId:g.id,threadId:t.id,text,
+    dateKey:addDays(today(),-d), source:kind==='planned'?'unknown':undefined});
   L('planned',cka,ckaT,7,'Domain 2 drills'); L('done',cka,ckaT,6,'Domain 2 drills');
   L('planned',cka,ckaT,2,'Domain 3 drills'); L('done',cka,ckaT,1,'Domain 3 drills');
   L('planned',gtr,gt,10,'session'); L('done',gtr,gt,9,'session');

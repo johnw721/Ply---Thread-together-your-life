@@ -29,6 +29,7 @@
    beginning and an end. Money can't.
 ------------------------------------------------------------------------------ */
 import { DB, eventsOn, stepById } from './store.js';
+import { rescheduleDrift } from './reschedule.js';
 import { addDays, uid } from './util.js';
 
 /* ---------- the built-in library ----------
@@ -369,13 +370,43 @@ export function recordSample(tmplKey, mins){
 export const TMPL_GATE='templateCorrection';
 export const tmplGates = ()=> fpMeta().gates;
 export function clearTmplGate(id){ const m=fpMeta(); m.gates=m.gates.filter(x=>x.id!==id); }
-export function queueTmplGate(tmplKey, proposes, because, q){
+/* A proposal may target the template itself (the duration pass) or a goal whose
+   cadence the evidence indicts (the drift pass). One entry shape carries both, so
+   acceptTmplGate() stays one write and the ribbon stays one chip:
+     {field:'dur', from, to}                       -> the template
+     {target:'goal', goalId, field:'cadenceDays', from, to} -> that goal
+   `field` alone still means the template, which is what keeps every Prompt 4
+   proposal valid unchanged. */
+export const GOAL_GATE_FIELDS = ['cadenceDays'];
+const sameProposal = (a,b) =>
+  (a.target||'tmpl')===(b.target||'tmpl') && a.field===b.field && (a.goalId||null)===(b.goalId||null);
+
+export function queueTmplGate(tmplKey, proposes, because, q, {merge=false}={}){
   const m=fpMeta();
   if(!proposes || !proposes.length) return null;
   /* One open proposal per template. A second sample arriving while the first is
-     still on the ribbon should sharpen the number, not stack another chip. */
+     still on the ribbon should sharpen the number, not stack another chip.
+
+     `merge` is what lets the two evidence kinds share that one chip rather than
+     racing to evict each other: drift arriving while a duration proposal is open
+     adds its rows and keeps both reasons, which is the whole point of the gate
+     having been named generically instead of "durationGate". */
+  const open = merge ? m.gates.find(x=>x.tmpl===tmplKey) : null;
   m.gates = m.gates.filter(x=>x.tmpl!==tmplKey);
-  const gate={id:uid(), kind:TMPL_GATE, tmpl:tmplKey, proposes, because, q, at:new Date().toISOString()};
+  let gate;
+  if(open){
+    const kept = open.proposes.filter(p=>!proposes.some(n=>sameProposal(p,n)));
+    const parts = (open.because && open.because.kind==='mixed')
+      ? open.because.parts.slice() : [open.because];
+    gate = Object.assign({}, open, {
+      proposes: kept.concat(proposes),
+      because: {kind:'mixed', parts: parts.concat([because])},
+      q: open.q + ' ' + q,
+      at: new Date().toISOString()
+    });
+  } else {
+    gate={id:uid(), kind:TMPL_GATE, tmpl:tmplKey, proposes, because, q, at:new Date().toISOString()};
+  }
   m.gates.push(gate);
   return gate;
 }
@@ -396,13 +427,65 @@ export function proposeFromDuration(tmplKey){
   return queueTmplGate(tmplKey, [{field:'dur', from:cur, to:med}],
                        {kind:'duration', n:list.length, stat:'median', value:med}, q);
 }
+/* ---------- the second kind of evidence: reschedule drift ----------
+   Prompt 4 wrote templateCorrectionGate to carry "a proposed default change for
+   template T, with its evidence" rather than "a duration change", precisely so
+   this could be a second `because.kind`. It is NOT a second gate, and it shares
+   the accept / decline / one-open-per-template mechanics unchanged.
+
+   What drift indicts is the cadence, not the estimate: a gym session pushed two
+   days later four times running does not take longer than you thought, it is
+   booked more often than you actually go. Which is why the proposal targets the
+   goal's own cadenceDays and not a template field — and why it only fires for a
+   goal that HAS a cadence, since proposing one for a one-off deadline is noise.
+
+   Deliberately NOT done here: touching suggestDay()'s placement. Moving where
+   things land is a scheduling-behaviour change, not a signal, and stays out of
+   this pass by design (README, Non-goals). */
+export const DRIFT_CADENCE_TYPES = new Set(['habit','maintenance','threshold']);
+
+export function proposeFromDrift(tmplKey){
+  const t=tmplGet(tmplKey); if(!t) return null;
+  const m=fpMeta();
+  const hits=rescheduleDrift(tmplKey, DB, m.learnAfter);
+  /* Evidence from several goals pointing several ways is noise, and averaging it
+     into one confident number is worse than saying nothing. One drifting goal is
+     a pattern; that is the only case with a correction to make. */
+  const drifting=hits.filter(h=>DRIFT_CADENCE_TYPES.has(h.goal.type));
+  if(drifting.length!==1) return null;
+  const h=drifting[0];
+  const cur=+h.goal.cadenceDays||0;
+  const shift=Math.round(h.avg);
+  if(!shift) return null;
+  const to=Math.max(1, (cur||7)+shift);
+  if(to===cur) return null;
+  const q=`"${t.label}" on ${h.goal.title} gets moved ${Math.abs(shift)} day`
+        + `${Math.abs(shift)===1?'':'s'} ${shift>0?'later':'earlier'} most times`
+        + ` (${h.n} moves). Stretch its cadence to ${to} days?`;
+  return queueTmplGate(tmplKey,
+    [{target:'goal', goalId:h.goal.id, field:'cadenceDays', from:cur||null, to}],
+    {kind:'drift', n:h.n, stat:'mean', value:Math.round(h.avg*10)/10, sd:Math.round(h.sd*10)/10,
+     goalId:h.goal.id},
+    q, {merge:true});
+}
+
 /** Accepting a gate writes every field it proposed — which is what keeps this
     honest when a later pass proposes more than one at a time. */
 export function acceptTmplGate(id){
   const gate=tmplGates().find(x=>x.id===id); if(!gate) return null;
   const patch={};
-  for(const p of gate.proposes) if(TMPL_FIELDS.includes(p.field)) patch[p.field]=p.to;
-  const t=tmplSet(gate.tmpl, patch);
+  for(const p of gate.proposes){
+    if((p.target||'tmpl')==='goal'){
+      /* A cadence belongs to a goal, not to a template shared by three of them.
+         Writing it here keeps accept as one action and one undo step. */
+      if(!GOAL_GATE_FIELDS.includes(p.field)) continue;
+      const g=(DB.goals||[]).find(x=>x.id===p.goalId);
+      if(g) g[p.field]=p.to;
+      continue;
+    }
+    if(TMPL_FIELDS.includes(p.field)) patch[p.field]=p.to;
+  }
+  const t=Object.keys(patch).length ? tmplSet(gate.tmpl, patch) : tmplGet(gate.tmpl);
   const m=fpMeta();
   delete m.samples[gate.tmpl];         // the evidence has been spent
   clearTmplGate(id);

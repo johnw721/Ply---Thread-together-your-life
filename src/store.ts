@@ -12,6 +12,7 @@ import { TYPE } from './types.js';
 import { firstStepFor, shortName, subs } from './engine.js';
 import { gEnqueue, gqueue } from './google.js';
 import { bus } from './bus.js';
+import { ANCHOR_SOURCES, blankReschedule, recomputeAllReschedule } from './reschedule.js';
 import { bumpRev } from './signals.js';
 import { $, addDays, daysBetween, toast, today, uid } from './util.js';
 
@@ -121,6 +122,7 @@ export function blankDB(): Database {
       snoozed:[],           // [{k:'<kind>:<threadId>', until:dateKey}] — muted ribbon signals
       learned:[],           // [{terms:[],type,n}] — type corrections the classifier reuses
       dayBudgetMins:240,    // what a realistic day holds; drives the load bars + scheduling
+      rescheduleAt:3,       // human re-bookings of one step before the churn signal fires
       listHidden:[],        // goal types toggled off in the List view
       listDone:false,       // show the completed archive instead of live goals
       budget:{              // weekly money, split across categories (allocation, not a ledger)
@@ -221,6 +223,20 @@ export function migrate(d: any): MigrateResult {
     d.meta.footprint = d.meta.footprint || b.meta.footprint;
   }
 
+  if(from < 10){                                  // 9 -> 10: why each anchor happened
+    /* Every existing 'planned' row is backfilled 'unknown' rather than guessed at.
+       An old row could have been the habit engine re-booking on cadence or a
+       person pushing the same commitment for the third time, and those are the two
+       cases this whole feature exists to tell apart — inventing a source would
+       poison the churn signal with fabricated evidence on day one. 'unknown' rows
+       are excluded from counting for good; they can still say what a date WAS,
+       which is enough to keep the next real push measuring its delta from
+       somewhere. */
+    for(const l of (d.log||[])) if(l && l.kind==='planned' && !l.source) l.source='unknown';
+    for(const g of d.goals) if(!g.reschedule) g.reschedule = blankReschedule();
+    if(typeof d.meta.rescheduleAt!=='number') d.meta.rescheduleAt = 3;
+  }
+
   /* The mirror fields have to hold whatever the file claimed: a row with a broken
      gcal object would be treated as remote and then fail every write against it. */
   for(const e of (d.events||[])){
@@ -244,6 +260,24 @@ export function migrate(d: any): MigrateResult {
     }
   }
   for(const e of (d.events||[])) if(!validStamp(e.updatedAt)) e.updatedAt = EPOCH;
+
+  /* Same treatment for the churn fields, and for the same reason: a file claiming
+     a string count or an unknown source would make rescheduleHistory() read as
+     churn something that never was. An unrecognised source degrades to 'unknown'
+     — uncountable — rather than to a plausible-looking guess. */
+  const SRC = new Set(ANCHOR_SOURCES);
+  for(const l of (d.log||[])){
+    if(!l || l.kind!=='planned') continue;
+    if(!SRC.has(l.source)) l.source='unknown';
+  }
+  for(const g of d.goals){
+    const r = g.reschedule;
+    g.reschedule = (r && typeof r==='object')
+      ? {count:Math.max(0, Math.floor(+r.count||0)),
+         lastAt: validStamp(r.lastAt) ? r.lastAt : null,
+         avgDeltaDays: Number.isFinite(+r.avgDeltaDays) ? +r.avgDeltaDays : 0}
+      : blankReschedule();
+  }
   d.meta.google = (d.meta.google && typeof d.meta.google==='object') ? d.meta.google : b.meta.google;
   d.meta.google = {
     enabled:!!d.meta.google.enabled,
@@ -433,6 +467,12 @@ export function adoptExternal(d: Database){
   if(!DB.meta.cursor) DB.meta.cursor = today();
   UNDO.length=0; REDO.length=0; PENDING=null;   // our snapshots describe a history that no longer exists
   shadowReset();                 // their stamps are authoritative — not our own change
+  /* Their per-record stamps are authoritative; goal.reschedule is NOT. It is a
+     derived counter, and per ply-sync-design.md `log` arrives as an append-only
+     union by id — so the document in hand already holds every row both sides had,
+     and re-deriving beats LWW on the field, which would drop one device's offline
+     pushes outright. This runs on the merged document, not on either input. */
+  recomputeAllReschedule(DB);
   paintUndo(); bus.resetTransientUI(); bus.render();          // no save() — that would bounce the write back
   toast('Refreshed — another tab changed something.');
 }
@@ -512,7 +552,8 @@ export function newGoal(o: Partial<Goal> = {}): Goal {
     threads:[],
     createdAt:new Date().toISOString(),
     updatedAt:new Date().toISOString(),
-    origin:null                              // {fromGoalId, kind:'decision'} on conversion
+    origin:null,                             // {fromGoalId, kind:'decision'} on conversion
+    reschedule:blankReschedule()             // churn summary; see src/reschedule.js
   }, o);
 }
 export function newThread(o: Partial<Thread> = {}): Thread {
@@ -550,9 +591,19 @@ export function newEvent(o: Partial<PlyEvent> = {}): PlyEvent {
 }
 
 /* --- log --- */
-export function logIt(kind: LogKind, o: Partial<LogEntry> = {}): void {
-  DB.log.push(Object.assign({id:uid(), ts:new Date().toISOString(), kind}, o));
+/* `o.source` is meaningful on 'planned' rows only, and every 'planned' row must
+   carry one: rescheduleHistory() cannot tell a habit re-booking itself from a
+   person pushing the same dinner a third time without it, and an untagged row
+   would fall through to 'unknown' and be silently uncountable forever. Defaulting
+   here rather than at each call site would hide exactly the miscategorisation
+   this field exists to prevent, so anchor() passes it explicitly and this only
+   backstops a row that somehow arrives without one. */
+export function logIt(kind: LogKind, o: Partial<LogEntry> = {}): LogEntry {
+  if(kind==='planned' && !o.source) o = Object.assign({}, o, {source:'unknown'});
+  const entry = Object.assign({id:uid(), ts:new Date().toISOString(), kind}, o) as LogEntry;
+  DB.log.push(entry);
   if(DB.log.length>4000) DB.log.splice(0, DB.log.length-4000);
+  return entry;
 }
 export function touchThread(t: Thread): void { t.lastMovement = new Date().toISOString(); }
 

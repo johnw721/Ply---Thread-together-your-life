@@ -5,6 +5,7 @@ import { hushed, subProgress, subs } from '../engine.js';
 import { DB, currentStep, doneGoals, eventById, liveGoals } from '../store.js';
 import { daysBetween, dkey, fmtDateY, fmtFull, relDays, today } from '../util.js';
 import { activeItemsC, uiRev } from '../signals.js';
+import { rescheduleLine } from '../reschedule.js';
 
 /* ================= LIST =================
    Day, Week and Quarter are all altitudes over a calendar. This one isn't — it's the
@@ -46,6 +47,10 @@ export const STATE_ORDER={hard:0, warn:1, ok:2, mute:3};
 function LiveRow({ goal, st }){
   const s = st.step, prog = s ? subProgress(s) : { any: false };
   const open = !!(s && CARDSUBS.has(s.id));
+  /* One optional line, and only when there is something to say. Not a dashboard,
+     not a new view — the point is that the history is visible where the goal
+     already is, next to the state it is already in. */
+  const churn = rescheduleLine(goal);
   return (
     <div class={'lrow ' + st.sev + (s ? ' draggable' : '')}
          data-goal={goal.id}
@@ -66,6 +71,7 @@ function LiveRow({ goal, st }){
             {prog.done}/{prog.total} {open ? '▲' : '▼'}
           </span>
         : <span /> }
+      { churn ? <div class="lchurn tiny muted">{churn}</div> : null }
       { open &&
         <div class="lsubs">
           {subs(s).map(x => <SubLine key={x.id} sub={x} step={s} thread={st.thread} goal={goal} />)}

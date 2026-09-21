@@ -6,6 +6,7 @@ import { DB, currentStep, eventById, goals, liveGoals } from '../store.js';
 import { addDays, clamp, daysBetween, dkey, fmtDate, parseKey, startOfWeek, today } from '../util.js';
 import { activeItemsC, uiRev } from '../signals.js';
 import { doneCount, partialCount, bestQuadrant } from './quarter.js';
+import { rescheduleLine } from '../reschedule.js';
 
 /* ================= QUARTER =================
    A 13-week roadmap: one row per goal, target window as a band, progress fill,
@@ -73,6 +74,8 @@ function RoadmapRow({ goal, from, to, x }){
             <span><NextStep goal={goal} thread={t} /></span>
           </div>
         ))}
+        { rescheduleLine(goal)
+          ? <div class="ns qchurn tiny muted">{rescheduleLine(goal)}</div> : null }
       </div>
       <div class="rmtrack">
         {Array.from({ length: 7 }, (_, i) => i * 2).map(w2 => (

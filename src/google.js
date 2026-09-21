@@ -2,7 +2,7 @@ import { SCHEMA } from './schema.js';
 import { ARMED, armLabel } from './components/dialogs.js';
 import { findStep } from './checkin.js';
 import { renderSignals } from './components/ribbon.jsx';
-import { DB, MEMONLY, addEvent, masterEvent, newEvent, save } from './store.js';
+import { DB, MEMONLY, addEvent, logIt, masterEvent, newEvent, save } from './store.js';
 import { $, addDays, dkey, esc, fmtDate, fmtTime, parseKey, toast, today, uid } from './util.js';
 import { render } from './views/render.jsx';
 
@@ -461,8 +461,19 @@ export function gMerge(cur,row){
   const pending = !!(cur.gcal && cur.gcal.pending);
   const newer = !cur.gcal || !cur.gcal.updated || !row.gcal.updated || row.gcal.updated > cur.gcal.updated;
   if(!pending && newer){
+    const wasKey = cur.dateKey;
     for(const f of ['title','dateKey','start','dur','allDay'])
       if(cur[f]!==row[f]){ cur[f]=row[f]; changed=true; }
+    /* A move made on the Google side never goes through CAL.anchor(), so without
+       this it leaves no trace in `log` at all. That is not just a missing bucket:
+       rescheduleHistory() derives `fromDateKey` from the PREVIOUS 'planned' row,
+       so an unlogged move makes the next local push measure its delta from a date
+       that stopped being the plan days ago. Excluded from churn counting — someone
+       moving it in the other calendar is not the person pushing it again — but the
+       chain has to stay honest. */
+    if(cur.stepId && cur.dateKey!==wasKey)
+      logIt('planned',{goalId:cur.goalId, threadId:cur.threadId, stepId:cur.stepId,
+                       text:cur.title, dateKey:cur.dateKey, source:'gcal-pull'});
   }
   if(cur.stepId && !row.stepId){
     gEnqueue('patch',cur); changed=true;          // someone stripped our property — put it back

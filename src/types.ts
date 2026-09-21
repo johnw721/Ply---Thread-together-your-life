@@ -196,6 +196,18 @@ export interface Goal {
   createdAt: Stamp;
   updatedAt: Stamp;
   origin: { fromGoalId: string; kind: 'decision' } | null;
+  /** Small durable summary of this goal's reschedule churn, kept because `log` is
+      trimmed from the head at 4000 rows. Maintained incrementally at each
+      qualifying anchor and re-derived wholesale on merge/adopt — never trusted as
+      sync-authoritative on its own. See src/reschedule.js. */
+  reschedule: RescheduleSummary;
+}
+
+export interface RescheduleSummary {
+  count: number;
+  lastAt: Stamp | null;
+  /** signed mean: positive means the pushes go later */
+  avgDeltaDays: number;
 }
 
 export interface Recur { every: number; until: DateKey | null; }
@@ -243,10 +255,18 @@ export type LogKind =
   | 'created' | 'planned' | 'done' | 'slipped' | 'blocked' | 'branch'
   | 'closed' | 'reopened' | 'converted' | 'checkin';
 
+/** Why an anchor happened. Only 'manual' | 'drag' | 'checkin' count as churn;
+    'unknown' is what migrate() backfills onto pre-schema-10 rows, which can never
+    be counted because nothing recorded what they were. */
+export type AnchorSource =
+  | 'auto-cycle' | 'unblock' | 'checkin' | 'drag' | 'manual' | 'gcal-pull' | 'unknown';
+
 export interface LogEntry {
   id: string;
   ts: Stamp;
   kind: LogKind;
+  /** set on 'planned' rows only — see src/reschedule.js */
+  source?: AnchorSource;
   goalId?: string;
   threadId?: string;
   stepId?: string;
@@ -278,6 +298,8 @@ export interface Meta {
   snoozed: { k: string; until: DateKey }[];
   learned: Lesson[];
   dayBudgetMins: number;
+  /** human re-bookings of one step before the churn signal fires; see reschedule.js */
+  rescheduleAt: number;
   listHidden: GoalType[];
   listDone: boolean;
   budget: Budget;

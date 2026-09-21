@@ -14,7 +14,9 @@ export function doCapture(text){
   const t=g.threads[0], s=t&&currentStep(t);
   if(s && cls.when){
     const mins = cls.clock ? cls.clock.min : null;
-    const ev=CAL.anchor(g,t,s,cls.when.key, mins===null?0:mins, mins===null?1440:60);
+    /* 'manual': a date the person typed into the capture box is a date they chose.
+       Inert for churn either way — this is always a first anchor on a new step. */
+    const ev=CAL.anchor(g,t,s,cls.when.key, mins===null?0:mins, mins===null?1440:60, 'manual');
     if(mins===null) ev.allDay=true;
   }
   save(); render();

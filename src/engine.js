@@ -7,6 +7,7 @@ import { actualMins, applyTemplate, blankFootprint, committedWeek, duePrereqs, e
          tmplGates, tmplGet } from './footprint.js';
 import { gDead } from './google.js';
 import { DB, checkpoint, currentStep, eventById, finishGoal, liveGoals, logIt, newGoal, newStep, newSub, newThread, pass, save, touchThread } from './store.js';
+import { churnAt, rescheduleHistory } from './reschedule.js';
 import { addDays, clamp, daysBetween, dkey, fmtDate, parseKey, startOfWeek, toast, today, uid } from './util.js';
 
 /* ===================== [SECTION: CLASSIFY] ===================== */
@@ -383,7 +384,9 @@ export function completeStep(g,t,s,opts={}){
       const step=Math.max(1, cadenceOf(g)||7);
       let nk=addDays(prev.dateKey, step);
       if(nk<=today()) nk=addDays(today(), step);          // don't re-book something already past
-      const ev=CAL.anchor(g,t,ns,nk,prev.start,prev.dur);
+      /* The engine re-booking a cycle on its own cadence is not churn — it is the
+         feature. Tagged so, and excluded from counting. */
+      const ev=CAL.anchor(g,t,ns,nk,prev.start,prev.dur,'auto-cycle');
       if(prev.allDay){ ev.allDay=true; ev.start=0; ev.dur=1440; }
       ns.autoScheduled=true;
     }
@@ -515,6 +518,29 @@ export function _signals(){
             prereq:d.prereq, ev:held, ref:d.prereq.id, days:daysBetween(T,held.dateKey),
             text:'Not done: '+d.prereq.title+' · '+fmtDate(held.dateKey)});
       }
+      /* ---- reschedule churn ----
+         A step the person has personally moved N times and still not done. It sits
+         here, after the blocked/dormant/hushed `continue`s above, so it inherits
+         every exclusion the other kinds already have rather than restating them:
+         a contingent thread is dormant and never reaches this line, and a step
+         waiting on someone else is blocked — it is stuck, not churning, and
+         saying "you keep moving this" to someone waiting on a third party is the
+         kind of wrong nag that gets a whole ribbon ignored.
+
+         Same silent → warn → hard → hushed ladder as everything else: nothing at
+         all below the threshold, warn at it, hard at twice it, and hushed already
+         swallowed the thread entirely further up. This is deliberately not the
+         one signal that nags harder than the rest. */
+      if(s && !s.done){
+        const churn = rescheduleHistory(s.id, DB.log);
+        const at = churnAt(DB);
+        if(churn.count >= at)
+          out.push({sev: churn.count >= at*2 ? 'hard' : 'warn', kind:'reschedule',
+            goal:g, thread:t, step:s, days:q, churn,
+            text:'Moved '+churn.count+'\u00d7 and still not done'
+                 + (driftPhrase(churn) ? ' \u00b7 '+driftPhrase(churn) : '')});
+      }
+
       // decisions get a long leash and only nudge at 2x cadence
       const limit = quietLimit(g);
       if(limit>0 && q>limit) out.push({sev:q>limit*2?'hard':'warn',kind:'quiet',goal:g,thread:t,days:q,
@@ -555,6 +581,17 @@ export function _signals(){
   for(const s of out) s.key=sigKey(s);
   return out.filter(s=>!muted.has(s.key))
             .sort((a,b)=>SEV_RANK[a.sev]-SEV_RANK[b.sev] || b.days-a.days);
+}
+/* The churn chip says which way the pushes go, not just how many there were:
+   "moved 4x" is a scold, "moved 4x, always later" is information. */
+export function avgDelta(churn){
+  const e=churn&&churn.events; if(!e||!e.length) return 0;
+  return e.reduce((n,x)=>n+x.deltaDays,0)/e.length;
+}
+export function driftPhrase(churn){
+  const a=avgDelta(churn), n=Math.round(Math.abs(a));
+  if(!n) return '';
+  return 'usually '+n+' day'+(n===1?'':'s')+' '+(a>0?'later':'earlier');
 }
 export const SEV_RANK={hard:0, warn:1, mute:2};
 /* `ref` disambiguates several signals of one kind against one subject — three

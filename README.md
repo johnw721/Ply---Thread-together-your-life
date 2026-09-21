@@ -616,6 +616,144 @@ thread still gets asked about on Sunday. Quieting the nag is not the same as dec
 **Contingent stays quiet.** Dormant threads are excluded from signals *and* the
 agenda. Blocked threads are not — they show as "still waiting on X".
 
+## Reschedule signals
+
+Ply has always logged a `'planned'` entry every time `anchor()` ran, and `anchor()`
+has always removed the prior event before making a new one. A step pushed three
+times therefore already left three rows in `log` — the raw trail existed. What it
+could not say was **why** each anchor happened: the habit engine re-booking itself
+on cadence, an unblock, and a person dragging dinner back for the third time were
+all the same row, and only the last of those is behaviour worth surfacing.
+
+### `source`
+
+`CAL.anchor()` takes a seventh argument and writes it onto the `'planned'` row.
+Every call site passes one explicitly — defaulting at the sink would hide exactly
+the miscategorisation the field exists to prevent.
+
+| source | where it comes from | churn? |
+|---|---|---|
+| `manual` | goal editor, event editor, capture box, ribbon resolver | **yes** |
+| `drag` | matrix / day-strip / week-column drag-to-schedule | **yes** |
+| `checkin` | the check-in's own scheduling step | **yes** |
+| `auto-cycle` | `completeStep()` re-booking a habit, maintenance or threshold goal | no |
+| `unblock` | reserved: no unblock path re-anchors today | no |
+| `gcal-pull` | a Google-side move adopted by `gMerge()` | no |
+| `unknown` | `migrate()`'s backfill onto pre-schema-10 rows | never countable |
+
+Only a person deciding to move something counts. The engine doing its job, a
+circumstance changing, and someone moving it in the other calendar are all
+excluded — none is the person pushing the same commitment again.
+
+Two paths were writing dates with no log entry at all, and both are now closed.
+`gMerge()` sets `cur.dateKey` directly, and `ev-save` in the event editor writes
+onto the stored master; neither goes through `anchor()`. That was not just a
+missing bucket — `rescheduleHistory()` takes each event's `fromDateKey` from the
+**previous** `'planned'` row, so an unlogged move made the next local push measure
+its delta from a date that had stopped being the plan days earlier.
+
+`migrate()`'s 9→10 step backfills `source:'unknown'` rather than inferring one. An
+old row could have been either of the two cases this feature exists to tell apart,
+and inventing a source would have poisoned the signal with fabricated evidence on
+day one. Those rows can still supply a `fromDateKey` — that much is a fact the
+migration did not have to guess — but can never be counted.
+
+### Derived, never counted
+
+`rescheduleHistory(stepId, log)` in `src/reschedule.js` is a pure function over
+`log`. It walks that step's `'planned'` rows since its creation or last completion,
+keeps only the churn sources, and returns `{count, events}` where each event is
+`{at, fromDateKey, toDateKey, deltaDays, source}`. `deltaDays` is **signed** —
+later is positive — so the direction is visible and not just the volume.
+
+A re-anchor that did not move the date produces nothing. `anchor()` fires on a
+time-only change and on a re-save of an unchanged row, and a move that did not move
+is not a reschedule: counting it would inflate the threshold and flatten the average
+the drift gate reads.
+
+The module takes the log explicitly and imports nothing but `util`. That is what
+lets `store.ts` call `recomputeAllReschedule()` on adopt without an import cycle —
+see `bus.js` for what the alternative costs — and it is why the walk is testable
+against a hand-built log with no app booted.
+
+### The durable summary
+
+`log` is capped at 4000 rows and trimmed from the head, which would silently erase
+a long-lived goal's history. `goal.reschedule` is `{count, lastAt, avgDeltaDays}`,
+folded forward one event at a time at each qualifying anchor, and it is a **goal
+lifetime** figure: the signal's window resets at each completion, but a habit that
+creates a fresh step every cycle would otherwise never accumulate anything worth
+displaying.
+
+It is **not** sync-authoritative. On merge or adopt it is recomputed wholesale from
+whatever `log` rows survive on the merged document, per `claude/ply-sync-design.md`:
+`log` merges as an append-only union by id, so the merged document already holds
+every row both devices had, and re-deriving beats LWW on a counter — which would
+drop one device's offline pushes outright whenever two devices each moved the same
+step. The honest cost: after a merge, a summary is only as complete as the log that
+survived onto the merged document. A goal whose early history was trimmed before a
+merge comes back with the smaller, re-derived number.
+
+### The churn signal
+
+A step moved by a person `meta.rescheduleAt` times (default 3) since it was last
+live, and still not done, raises a `reschedule` signal. It sits with the other
+per-thread checks in `_signals()`, **after** the blocked / dormant / hushed
+`continue`s, so it inherits every existing exclusion rather than restating them: a
+contingent thread is dormant and never reaches the line, and a step waiting on a
+third party is blocked — stuck, not churning. Telling someone they keep moving
+something they are waiting on is the kind of wrong nag that gets a whole ribbon
+ignored.
+
+Same ladder as everything else, deliberately: silent below the threshold, `warn` at
+it, `hard` at twice it, and `hushed` has already swallowed the thread further up.
+It snoozes like any other kind. This is not the one signal that nags harder.
+
+Its inline resolver offers four doors, never a bare count: **move it again** (which
+books it and counts as one more push — owning it is the point), **mark blocked**
+(which silences the signal for the right reason rather than by snoozing), **cadence**
+(which jumps to the goal editor, where the field already lives), and **drop the goal**.
+
+### Drift feeds the template gate
+
+Prompt 4 named `templateCorrectionGate` generically — "a proposed default change for
+template T, carrying its evidence" — precisely so reschedule drift could be a second
+`because.kind` rather than a second gate. It is not a second gate, and it shares the
+accept / decline / one-open-per-template mechanics unchanged.
+
+`rescheduleDrift()` groups a template's pushes **by goal** and keeps only those whose
+spread is tight enough to read as a pattern (`sd ≤ max(0.75, |avg| × 0.75)`) and whose
+mean is at least a day. Evidence from several goals pointing several ways is noise,
+and averaging it into one confident number is worse than saying nothing — so a
+proposal is made only when exactly one goal is drifting.
+
+What drift indicts is the **cadence**, not the estimate: a gym session pushed two days
+later four times running does not take longer than you thought, it is booked more often
+than you actually go. So the proposal targets that goal's own `cadenceDays`, carried in
+the same `proposes` array as a duration proposal via `{target:'goal', goalId, field, …}`.
+A gate holding both kinds carries `because:{kind:'mixed', parts:[…]}`, renders as one
+chip naming both reasons, and accepts as one action and one undo step. A goal with no
+cadence — a deadline — is not indicted, since there is nothing to stretch.
+
+Drift is evaluated at anchor time, not at completion. A step being pushed for the fourth
+time is precisely a step that is not completing, so hanging this off `completeStep()`
+beside `proposeFromDuration()` would have meant the cadence correction only ever arrived
+for things that were going fine.
+
+### Display
+
+Two lines, no new view and no dashboard. The List view's per-goal row and the Quarter
+view's goal-hover detail each gain an optional line when `goal.reschedule.count > 0`:
+*"rescheduled 4× · usually 2 days later"* (or *earlier* for a negative mean, or just the
+count when the drift rounds to zero). Both render from the same `rescheduleLine()`, and a
+test asserts they never diverge.
+
+**Deliberately not done.** Drift does not change `suggestDay()`'s placement. Moving where
+things land is a scheduling-behaviour change, not a signal, and stays a separate decision.
+Nor is there any cross-goal or aggregate analytics view, and nothing here predicts a future
+reschedule.
+
+
 ## Weekly check-in
 
 `c` or the header button. A queue of cards, one decision each:

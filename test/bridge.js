@@ -68,6 +68,12 @@ export const BRIDGE_VALUES = [
   'tmplGates','clearTmplGate','queueTmplGate','proposeFromDuration','acceptTmplGate','declineTmplGate',
   'MONEY_TARGET','stepById','carryFootprint','togglePrereq','applyFootprint','sigLabel',
   'committedThisWeek','catSegStyle','footRowHTML','tmplPrefsHTML','parsePrereqSpec','parseCostSpec',
+  // reschedule: why each anchor happened, and what the pattern of pushes is evidence of
+  'ANCHOR_SOURCES','CHURN_SOURCES','CHURN_AT','churnAt',
+  'rescheduleHistory','rescheduleLifetime','blankReschedule','bumpReschedule','noteReschedule',
+  'rescheduleSummaryFromLog','recomputeAllReschedule','rescheduleLine',
+  'DRIFT_MIN_DAYS','DRIFT_SD_FACTOR','driftStats','rescheduleDrift',
+  'DRIFT_CADENCE_TYPES','GOAL_GATE_FIELDS','proposeFromDrift','avgDelta','driftPhrase',
   // seed
   'seed'
 ];

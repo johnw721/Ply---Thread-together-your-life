@@ -19,7 +19,8 @@ export const SIG_KIND={
   hushed:      'gone quiet — not nagging',
   prereq:      'not done yet, and due',
   overbudget:  'committed past what is allocated',
-  tmpl:        'a template default looks off'
+  tmpl:        'a template default looks off',
+  reschedule:  'kept getting moved'
 };
 export const SIG_MAX=5;
 export let SIGOPEN=null, SIGALL=false, SIGFIX=null;

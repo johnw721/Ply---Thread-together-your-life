@@ -105,3 +105,39 @@ Prompt 4's non-goals.
 nothing to pin against. `footprint.test.js` (schema 9) skips itself on the legacy target
 instead, which is the pattern worth converging on: either gate `stamp.test.js` the same way,
 or teach the legacy config to exclude suites newer than the monolith.
+
+## 8. `'unblock'` is a reserved `AnchorSource` with no call site
+
+Prompt 5's source taxonomy includes `'unblock'`, but none of the three unblock paths
+re-anchors anything: `resolver.js` (`case 'unblock'`), `checkin.js` (`case 'unblock'`) and
+`goal-editor.js` (`case 'unblock'`) all set `t.status='active'` and stop. The value stays in
+the enum and in `migrate()`'s coercion set so a future unblock-and-re-book has somewhere to
+go, and so a document written by such a build is readable by this one — but nothing emits it
+today. Either wire an unblock to offer a re-book, or drop the value; leaving it indefinitely
+is a bucket that looks meaningful in the type and never fills.
+
+## 9. `goal.reschedule` loses pre-trim history across a merge
+
+`adoptExternal()` — and, when Prompt 2 lands, the sync merge — recomputes the summary fresh
+from whatever `log` rows survive on the merged document, per `ply-sync-design.md`. That is
+the right call against LWW on the field, which would drop one device's offline pushes
+outright. But it does mean the summary's whole reason for existing — outliving the 4000-row
+trim — is undone by the first merge after a trim: a goal whose early rows were trimmed comes
+back with the smaller, re-derived count.
+
+Fixing it properly needs a merge-aware form the current design does not have: a per-device
+contribution map (`{deviceId: {count, sumDelta}}`) merged field-wise, so each device's own
+tally survives without either side being able to double-count the other's. That is a real
+schema addition and a sync-design change, so it is filed rather than smuggled in here. Until
+then the number is honest about what it can see, and the README says so.
+
+## 10. Drift proposes only for a single cyclical goal
+
+`proposeFromDrift()` fires only when exactly one goal using a template is drifting **and**
+that goal's type carries a cadence (`habit`, `maintenance`, `threshold`). Two goals drifting
+the same way on the same template currently propose nothing, even though that is arguably
+stronger evidence about the template itself. The blocker is that a template has no
+days-scale field to correct — `TMPL_FIELDS` is `lead`/`dur`/`lag`, all minutes — so there is
+nothing to propose at the template level without inventing one. Adding a template
+`leadDays` would give multi-goal drift a target, but it would be inert until something reads
+it, so it was left out rather than added as decoration.

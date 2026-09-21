@@ -183,7 +183,7 @@ export function ckAct(act,btn){
         const d=$('.sd',row).value, tm=$('.stm',row).value, du=+$('.sdur',row).value;
         if(!d) continue;
         const mins = du===0?null:(+tm.split(':')[0]*60 + +tm.split(':')[1]);
-        const ev=CAL.anchor(f.goal,f.thread,f.step,d, mins===null?0:mins, du||1440);
+        const ev=CAL.anchor(f.goal,f.thread,f.step,d, mins===null?0:mins, du||1440, 'checkin');
         if(du===0) ev.allDay=true;
         touchThread(f.thread);
       }

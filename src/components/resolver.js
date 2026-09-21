@@ -8,14 +8,14 @@ import { applyFootprint, autoNextTitle, clearGate, firstStepFor, learnType, mone
          sigLabel, signals, togglePrereq } from '../engine.js';
 import { acceptTmplGate, costTotal, declineTmplGate, fp, tmplGet } from '../footprint.js';
 import { openGoal } from '../goal-editor.js';
-import { checkpoint, currentStep, deleteGoal, newStep, save, touchThread } from '../store.js';
+import { checkpoint, currentStep, deleteGoal, logIt, newStep, save, touchThread } from '../store.js';
 import { $, addDays, esc, toast, today, uid } from '../util.js';
 import { QUAD, render } from '../views/render.jsx';
 
 /* `quiet`, `deadline` and `overbudget` stay unfixable on purpose: all three are
    judgment calls rather than data gaps. Nothing here can decide for you that this
    week's dinners are worth it. */
-export const FIXABLE=new Set(['gate','nostep','unscheduled','slipped','branch','blocked','hushed','prereq','tmpl']);
+export const FIXABLE=new Set(['gate','nostep','unscheduled','slipped','branch','blocked','hushed','prereq','tmpl','reschedule']);
 
 export function sigResolverHTML(s){
   const g=s.goal, t=s.thread;
@@ -65,12 +65,40 @@ export function sigResolverHTML(s){
       <button class="btn primary sm" data-fix="prereq-done">Done</button></div>`;
   }
   else if(s.kind==='tmpl'){
-    const rows=(s.gate.proposes||[]).map(p=>`${esc(p.field)} ${p.from||0} &rarr; <b>${p.to}</b> min`).join(' · ');
+    /* One chip, one accept — even when the gate is carrying two kinds of evidence
+       at once. A goal-targeted row is in days and a template row in minutes;
+       saying which is cheaper than two chips that can be answered inconsistently. */
+    const rows=(s.gate.proposes||[]).map(p=> (p.target||'tmpl')==='goal'
+      ? `cadence ${p.from||'default'} &rarr; <b>${p.to}</b> days`
+      : `${esc(p.field)} ${p.from||0} &rarr; <b>${p.to}</b> min`).join(' · ');
+    const parts = (s.gate.because && s.gate.because.kind==='mixed')
+      ? s.gate.because.parts : [s.gate.because];
+    const why = parts.filter(Boolean).map(b => b.kind==='drift'
+      ? `${b.n} move${b.n===1?'':'s'}`
+      : `${b.n} timed ${b.n===1?'completion':'completions'}`).join(' + ');
     body=`<div class="fixrow">
-      <span class="tiny muted" style="flex:1;min-width:0">${rows} &middot; from ${s.gate.because.n}
-        timed ${s.gate.because.n===1?'completion':'completions'}</span>
+      <span class="tiny muted" style="flex:1;min-width:0">${rows} &middot; from ${why}</span>
       <button class="btn sm" data-fix="tmpl-no">Leave it</button>
       <button class="btn primary sm" data-fix="tmpl-yes">Update</button></div>`;
+  }
+
+  else if(s.kind==='reschedule'){
+    /* Never a bare count with no way out. The four doors are the four real
+       answers to "I keep moving this": move it again (and own it), say out loud
+       that it is actually waiting on something, admit the cadence was wrong, or
+       admit the goal was. */
+    const st=currentStep(t);
+    body=`<div class="fixrow">
+      <span class="tiny muted" style="flex:1;min-width:0">${esc(st?st.title:'')}</span>
+      <input type="date" id="fxWhen" value="${suggestDay({goal:g,quadrant:st?st.quadrant:'q2'},45)}">
+      <input type="time" id="fxTime" value="${suggestTime({goal:g,quadrant:st?st.quadrant:'q2'})}">
+      <button class="btn primary sm" data-fix="schedule">Move it again</button></div>
+      <div class="fixrow">
+      <input type="text" id="fxBlock" placeholder="Waiting on what?">
+      <button class="btn sm" data-fix="churn-block">Mark blocked</button>
+      <button class="btn sm" data-fix="churn-cadence">Cadence…</button>
+      <button class="btn sm" data-fix="drop">Drop the goal</button></div>
+      <div class="tiny muted" id="fxLoad"></div>`;
   }
   else if(s.kind==='nostep'){
     body=`<div class="fixrow">
@@ -166,11 +194,26 @@ export function sigFixAct(act,btn){
       const st=currentStep(t); if(!st){toast('Nothing to schedule.');return;}
       const d=$('#fxWhen').value; if(!d){toast('Pick a date.');return;}
       const tm=($('#fxTime').value||'19:00').split(':');
-      CAL.anchor(g,t,st,d,+tm[0]*60 + +tm[1],45); touchThread(t); break; }
+      /* 'manual': the ribbon is a surface, not a different act — a person typing a
+         date here is the same decision as typing one in the editor. Resolving
+         `unscheduled` is inert (first anchor, no predecessor); resolving `slipped`
+         counts, and should: that IS pushing the same commitment again. */
+      CAL.anchor(g,t,st,d,+tm[0]*60 + +tm[1],45,'manual'); touchThread(t); break; }
     case 'branch':{
       const b=(t.branches||[])[+btn.dataset.i]; if(!b) return;
       t.needsBranch=false;
       t.steps.push(newStep(b.next,{auto:true})); touchThread(t); break; }
+    case 'churn-block':{
+      /* Saying it is blocked is a real answer, and it also silences the churn
+         signal for the right reason rather than by snoozing it: a blocked thread
+         is excluded from this kind, the same way it is from every other. */
+      const who=($('#fxBlock')||{value:''}).value.trim();
+      t.status='blocked'; t.blockedOn=who||'someone'; t.blockedSince=new Date().toISOString();
+      logIt('blocked',{goalId:g.id,threadId:t.id,text:t.blockedOn}); break; }
+    case 'churn-cadence':
+      /* The cadence field lives in the goal editor; jumping there beats growing a
+         second place to edit it. */
+      setSigFix(null); openGoal(g.id); return;
     case 'unblock':
       t.status='active'; t.blockedOn=''; t.blockedSince=null; touchThread(t); break;
     case 'revive':

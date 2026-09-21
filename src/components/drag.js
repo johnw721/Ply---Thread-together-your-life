@@ -124,7 +124,7 @@ export function wireDrag(v = $('#view')){
                         : (+suggestTime({goal:f.goal,quadrant:f.step.quadrant}).split(':')[0])*60;
       checkpoint(sub?'that subtask drop':'that scheduling');
       if(sub) floatSub(f.step,subId);
-      CAL.anchor(f.goal,f.thread,f.step,k,mins,45);
+      CAL.anchor(f.goal,f.thread,f.step,k,mins,45,'drag');
       touchThread(f.thread); save(); render();
       const L=loadState(k);
       say('Scheduled '+(k===today()?'':fmtDate(k)+' ')+'for '+fmtTime(mins)

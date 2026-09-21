@@ -15,6 +15,7 @@ import { doInstall, renderInstallBar } from './pwa.js';
 import { DB, MEMONLY, addEvent, addGoal, checkpoint, currentStep, deleteGoal, eventById, finishGoal, goalById, logIt, masterEvent, newEvent, newStep, newThread, removeEvent, save, skipOccurrence, threadById, touchThread } from './store.js';
 import { $, $$, dkey, el, esc, fmtDate, fmtFull, fmtTime, toast, today, uid } from './util.js';
 import { QUAD, render } from './views/render.jsx';
+import { noteReschedule } from './reschedule.js';
 
 export function toggleStep(gid,tid,sid){
   const f=findStep(sid); if(!f) return;
@@ -490,7 +491,7 @@ export function uiAct(a,btn){
     const v=$('#dnStep').value.trim(); if(!v){toast('Name the step.');return;}
     const s=newStep(v,{quadrant:$('#dnQuad').value}); t.steps.push(s); touchThread(t);
     const d=$('#dnDate').value;
-    if(d){ const tm=$('#dnTime').value.split(':'); CAL.anchor(g,t,s,d,+tm[0]*60+ +tm[1],60); }
+    if(d){ const tm=$('#dnTime').value.split(':'); CAL.anchor(g,t,s,d,+tm[0]*60+ +tm[1],60,'manual'); }
     save(); closeModal(); render(); toast('Thread stays live.');
   }
   if(a==='dn-block'){ closeModal(); toast('Mark it blocked from the goal card.'); }
@@ -511,6 +512,14 @@ export function uiAct(a,btn){
       if(e.dateKey!==wasKey) e.skips=[];          // series moved; old exceptions no longer mean anything
     }
     if(!id) addEvent(e);
+    /* The event editor writes dateKey straight onto the stored master, bypassing
+       CAL.anchor() entirely — so before this, a person could move a step's date
+       from here three times and generate no reschedule evidence at all. Same act
+       as the scheduling row above, same tag. */
+    if(e.stepId && e.dateKey!==wasKey)
+      noteReschedule(goalById(e.goalId), e.stepId, 'manual',
+        logIt('planned',{goalId:e.goalId, threadId:e.threadId, stepId:e.stepId,
+                         text:e.title, dateKey:e.dateKey, source:'manual'}), DB.log);
     save(); closeModal(); render();
     const L=loadState(e.dateKey);
     if(L.over) toast(fmtDate(e.dateKey)+' is now '+hrs(L.mins)+' against a '+hrs(L.budget)+' day.');
@@ -640,8 +649,8 @@ export function geAct(a,btn){
     case 'sched-save':{
       const s=t.steps.find(x=>x.id===btn.dataset.s); if(!s){GEROW=null;break;}
       const d=$('.schd').value; if(!d){ toast('Pick a date.'); return; }
-      if($('.schall').checked){ const ev=CAL.anchor(g,t,s,d,0,1440); ev.allDay=true; }
-      else { const p=($('.schtm').value||'19:00').split(':'); CAL.anchor(g,t,s,d,+p[0]*60 + +(p[1]||0),45); }
+      if($('.schall').checked){ const ev=CAL.anchor(g,t,s,d,0,1440,'manual'); ev.allDay=true; }
+      else { const p=($('.schtm').value||'19:00').split(':'); CAL.anchor(g,t,s,d,+p[0]*60 + +(p[1]||0),45,'manual'); }
       touchThread(t); GEROW=null;
       { const L=loadState(d); if(L.over) toast(fmtDate(d)+' is now '+hrs(L.mins)+' against a '+hrs(L.budget)+' day.'); }
       break; }
