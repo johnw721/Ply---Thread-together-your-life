@@ -573,3 +573,59 @@ d('the two display lines [' + TARGET + ']', () => {
     expect(list).toBe(quarter);
   });
 });
+
+/* FOLLOW-UPS.md #8: 'unblock' was a reserved AnchorSource with no call site.
+   unblockThread() is the one function all three unblock sites (the ribbon
+   resolver, the check-in, the goal editor) now share, so the condition for
+   whether to re-book lives in one place. */
+d('unblockThread() — conditional re-book [' + TARGET + ']', () => {
+  it('a cyclical goal with no slot at all gets one, one cadence out, tagged unblock', () => {
+    const m = makeGoal(p, { title: 'Gym', type: 'habit', rel: 'cyclical',
+      thread: { status: 'blocked', blockedOn: 'knee' } });
+    m.goal.cadenceDays = 7;
+    const s = p.unblockThread(m.goal, m.thread);
+    expect(m.thread.status).toBe('active');
+    expect(m.thread.blockedOn).toBe('');
+    expect(m.thread.blockedSince).toBe(null);
+    expect(s.eventId).toBeTruthy();
+    expect(p.eventById(s.eventId).dateKey).toBe(D(7));
+    expect(trail(s.id)).toEqual([{source:'unblock', dateKey:D(7)}]);
+  });
+
+  it('the re-book is not churn — the point of tagging it separately from manual/drag/checkin', () => {
+    const m = makeGoal(p, { type: 'maintenance', rel: 'cyclical',
+      thread: { status: 'blocked' } });
+    m.goal.cadenceDays = 3;
+    p.unblockThread(m.goal, m.thread);
+    expect(m.goal.reschedule.count).toBe(0);  // a first booking, not a push
+  });
+
+  it('a non-cyclical goal is reactivated but left unscheduled — there is no date to invent', () => {
+    const m = makeGoal(p, { type: 'task', thread: { status: 'blocked' } });
+    const s = p.unblockThread(m.goal, m.thread);
+    expect(m.thread.status).toBe('active');
+    expect(s.eventId).toBeFalsy();
+    expect(trail(s.id)).toEqual([]);
+  });
+
+  it('a cyclical goal whose step is already on the calendar is left exactly where it was', () => {
+    const m = makeGoal(p, { type: 'threshold', rel: 'cyclical',
+      thread: { status: 'blocked' } });
+    m.goal.cadenceDays = 14;
+    p.CAL.anchor(m.goal, m.thread, m.step, D(2), 9*60, 60, 'manual');
+    const before = m.step.eventId;
+    p.unblockThread(m.goal, m.thread);
+    expect(m.step.eventId).toBe(before);
+    expect(p.eventById(before).dateKey).toBe(D(2));
+    expect(trail(m.step.id).map(x => x.source)).toEqual(['manual']);  // no second row
+  });
+
+  it('a thread with no live step at all is just reactivated — nothing to book', () => {
+    const m = makeGoal(p, { type: 'habit', rel: 'cyclical', step: null,
+      thread: { status: 'blocked' } });
+    m.goal.cadenceDays = 7;
+    const s = p.unblockThread(m.goal, m.thread);
+    expect(m.thread.status).toBe('active');
+    expect(s).toBeNull();
+  });
+});

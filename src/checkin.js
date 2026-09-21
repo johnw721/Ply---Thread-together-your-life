@@ -4,7 +4,7 @@ import { bestQuadrant } from './views/quarter.js';
 import { budget, dayBudget, hrs, loadState } from './budget.js';
 import { CAL } from './cal.js';
 import { closeModal } from './components/modal.jsx';
-import { cadenceOf, checkinAgenda, clearGate, completeStep, firstStepFor, learnType, shortName } from './engine.js';
+import { cadenceOf, checkinAgenda, clearGate, completeStep, firstStepFor, learnType, shortName, unblockThread } from './engine.js';
 import { openConvert } from './goal-editor.js';
 import { footWidth } from './footprint.js';
 import { DB, checkpoint, currentStep, finishGoal, lastDoneStep, load, logIt, newStep, save, touchThread } from './store.js';
@@ -159,8 +159,8 @@ export function ckAct(act,btn){
       t.steps.push(newStep(v,{quadrant:(c.step&&c.step.quadrant)||'q2'})); touchThread(t);
       CKROW=null; bump(); break; }
     case 'unblock':{
-      t.status='active'; t.blockedOn=''; t.blockedSince=null; touchThread(t);
-      if(!currentStep(t)){ CKROW='next'; save(); renderCheckin(); return; }
+      const s=unblockThread(g,t);
+      if(!s){ CKROW='next'; save(); renderCheckin(); return; }
       bump(); break; }
     case 'unblock-nudge':{
       t.steps.push(newStep('Follow up with '+(t.blockedOn||'them'),{quadrant:'q3'}));

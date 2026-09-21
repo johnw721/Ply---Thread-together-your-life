@@ -2,9 +2,9 @@ import { PIPELINE_STAGES, TYPE } from './types.js';
 import { bus } from './bus.js';
 import { CAL } from './cal.js';
 import { findStep } from './checkin.js';
-import { actualMins, applyTemplate, blankFootprint, committedWeek, duePrereqs, ensureFootprint,
-         fp, matchTemplate, normCost, normPrereq, proposeFromDuration, recordSample,
-         tmplGates, tmplGet } from './footprint.js';
+import { actualMins, applyTemplate, blankFootprint, committedWeek, DRIFT_CADENCE_TYPES, duePrereqs,
+         ensureFootprint, fp, matchTemplate, normCost, normPrereq, proposeFromDuration, recordSample,
+         slotDur, tmplGates, tmplGet } from './footprint.js';
 import { gDead } from './google.js';
 import { DB, checkpoint, currentStep, eventById, finishGoal, liveGoals, logIt, newGoal, newStep, newSub, newThread, pass, save, touchThread } from './store.js';
 import { churnAt, rescheduleHistory } from './reschedule.js';
@@ -395,6 +395,27 @@ export function completeStep(g,t,s,opts={}){
   return {next:ns,needsDefine:false,carried};
 }
 
+/* Unblocking is a circumstance changing, not a person deciding to move something,
+   so it's excluded from churn (CHURN_SOURCES) even on the one path below that does
+   re-anchor. It isn't nothing, though: a cyclical goal (habit/maintenance/threshold
+   -- the same set proposeFromDrift() already singles out) has a cadence to fall
+   back on, so a step that was left with no slot at all gets one, one cadence out
+   from today -- the same shape completeStep()'s own cyclical re-book uses, just
+   with no previous event to copy a time from, since this step was never anchored
+   in the first place. Anything else -- a one-off task, or a step that's already
+   on the calendar -- there's no date to invent, so unblocking leaves scheduling
+   exactly alone. Shared by every case 'unblock': so the condition lives in one
+   place instead of three. */
+export function unblockThread(g,t){
+  t.status='active'; t.blockedOn=''; t.blockedSince=null; touchThread(t);
+  const s=currentStep(t);
+  if(s && !s.eventId && DRIFT_CADENCE_TYPES.has(g.type)){
+    const nk=addDays(today(), Math.max(1, cadenceOf(g)||7));
+    const q=s.quadrant||'q2', start=(q==='q1'?9:q==='q2'?19:q==='q3'?12:17)*60;
+    CAL.anchor(g,t,s,nk,start,slotDur(s,60),'unblock');
+  }
+  return s;
+}
 export function autoNextTitle(g,t,prev){
   switch(g.type){
     case 'habit':       return 'Next session: '+shortName(g);

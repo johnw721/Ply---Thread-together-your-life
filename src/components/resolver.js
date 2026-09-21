@@ -5,7 +5,7 @@ import { openConfirm } from './dialogs.js';
 import { SIGFIX, setSigFix } from './ribbon.js';
 import { renderSignals } from './ribbon.jsx';
 import { applyFootprint, autoNextTitle, clearGate, firstStepFor, learnType, money, shortName,
-         sigLabel, signals, togglePrereq } from '../engine.js';
+         sigLabel, signals, togglePrereq, unblockThread } from '../engine.js';
 import { acceptTmplGate, costTotal, declineTmplGate, fp, tmplGet } from '../footprint.js';
 import { openGoal } from '../goal-editor.js';
 import { checkpoint, currentStep, deleteGoal, logIt, newStep, save, touchThread } from '../store.js';
@@ -215,7 +215,7 @@ export function sigFixAct(act,btn){
          second place to edit it. */
       setSigFix(null); openGoal(g.id); return;
     case 'unblock':
-      t.status='active'; t.blockedOn=''; t.blockedSince=null; touchThread(t); break;
+      unblockThread(g,t); break;
     case 'revive':
       touchThread(t); break;                          // movement is what un-hushes it
     case 'drop':

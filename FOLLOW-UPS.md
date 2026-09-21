@@ -114,15 +114,27 @@ nothing to pin against. Gated the same way `footprint.test.js` (schema 9) and
 every top-level `describe(` in the file swapped for `d(`. `[legacy]` now reads 18 skipped
 rather than 12 failed.
 
-## 8. `'unblock'` is a reserved `AnchorSource` with no call site
+## 8. `'unblock'` was a reserved `AnchorSource` with no call site — fixed, conditionally
 
-Prompt 5's source taxonomy includes `'unblock'`, but none of the three unblock paths
-re-anchors anything: `resolver.js` (`case 'unblock'`), `checkin.js` (`case 'unblock'`) and
-`goal-editor.js` (`case 'unblock'`) all set `t.status='active'` and stop. The value stays in
-the enum and in `migrate()`'s coercion set so a future unblock-and-re-book has somewhere to
-go, and so a document written by such a build is readable by this one — but nothing emits it
-today. Either wire an unblock to offer a re-book, or drop the value; leaving it indefinitely
-is a bucket that looks meaningful in the type and never fills.
+Prompt 5's source taxonomy included `'unblock'`, but none of the three unblock paths
+re-anchored anything: `resolver.js`, `checkin.js` and `goal-editor.js` (each `case
+'unblock'`) all set `t.status='active'` and stopped. Wiring it unconditionally would have
+meant inventing a date for a one-off task, which is worse than not scheduling it at all —
+so the fix is conditional, and lives in one place: `unblockThread(g,t)` in `src/engine.js`,
+which all three call sites now call instead of duplicating the state reset.
+
+`unblockThread()` reactivates the thread always. It also re-anchors the current step —
+one cadence out from today, tagged `source:'unblock'` — but only when both hold: the goal
+is cyclical (`habit`/`maintenance`/`threshold`, the same set `proposeFromDrift()` already
+singles out) *and* the step has no event at all (`!s.eventId`). A one-off task has no
+cadence to fall back on, so it's left exactly as active-and-unscheduled, same as before. A
+step that's already on the calendar is left exactly where it is — a cleared block is not a
+reason to move something that already has a date. `'unblock'` stays out of `CHURN_SOURCES`
+(a circumstance changing isn't a person pushing something again), so the re-book shows up
+in the step's history but never bumps `goal.reschedule.count`.
+
+Five new assertions in `test/suites/reschedule.test.js`, skipped on the legacy target (no
+call site existed there to pin against, same as the rest of that suite).
 
 ## 9. `goal.reschedule` loses pre-trim history across a merge
 

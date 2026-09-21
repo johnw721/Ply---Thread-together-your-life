@@ -34,7 +34,7 @@ export const BRIDGE_VALUES = [
   // engine
   'shortName','cadenceOf','buildGoalFrom','firstStepFor',
   'subs','subProgress','sortSubs','addSub','moveItem','toggleSub','floatSub','carrySubs',
-  'completeStep','autoNextTitle',
+  'completeStep','autoNextTitle','unblockThread',
   'activeItems','itemsOn','unscheduledItems','overdueItems',
   'daysQuiet','quietLimit','HUSH_AT','hushed','signals','sigKey','snoozeSignals',
   'openGates','clearGate','lastDowKey','checkinDue','checkinAgenda','followThrough','streak',

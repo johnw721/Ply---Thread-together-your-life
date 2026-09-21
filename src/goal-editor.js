@@ -5,7 +5,7 @@ import { CAL } from './cal.js';
 import { ckAct, findStep, setCK, subjHead, suggestDay, suggestTime } from './checkin.js';
 import { ARMED, armConfirm, armLabel, disarm, newInAct, newInHTML, takeConfirmCb } from './components/dialogs.js';
 import { closeModal, openModal } from './components/modal.jsx';
-import { DOWS, buildGoalFrom, cadenceOf, classify, completeStep, daysQuiet, followThrough, learnType, money, moveItem, shortName, streak, subProgress, subs, toggleSub, togglePrereq } from './engine.js';
+import { DOWS, buildGoalFrom, cadenceOf, classify, completeStep, daysQuiet, followThrough, learnType, money, moveItem, shortName, streak, subProgress, subs, toggleSub, togglePrereq, unblockThread } from './engine.js';
 import { TEMPLATES, applyTemplate, clearActual, costTotal, ensureFootprint, fp, fpMeta, hasFootprint,
          normCost, normPrereq, startActual, stopActual, timing, tmplAdd, tmplBuiltin, tmplEdited,
          tmplGet, tmplHide, tmplList, tmplReset, tmplSet, tmplShow } from './footprint.js';
@@ -661,7 +661,7 @@ export function geAct(a,btn){
       const who=($('.blockwho')||{value:''}).value.trim();
       t.status='blocked'; t.blockedOn=who||'someone'; t.blockedSince=new Date().toISOString();
       logIt('blocked',{goalId:g.id,threadId:t.id,text:t.blockedOn}); GEROW=null; break; }
-    case 'unblock': t.status='active'; t.blockedOn=''; t.blockedSince=null; touchThread(t); break;
+    case 'unblock': unblockThread(g,t); break;
     case 'fire': g.threads.forEach(x=>{if(x.status==='dormant'){x.status='active';touchThread(x);}});
       { const th=g.threads[0]; if(th&&!currentStep(th)) th.steps.push(newStep('First move on '+shortName(g),{auto:true})); }
       g.gates=(g.gates||[]).filter(x=>x.kind!=='trigger'); break;
