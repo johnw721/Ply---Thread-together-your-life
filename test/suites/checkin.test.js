@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { boot, TARGET, makeGoal } from '../harness.js';
+import { boot, TARGET, isLegacy, makeGoal } from '../harness.js';
 
 let h, p;
 beforeEach(async () => { h = await boot({ seed: false }); p = h.api; h.forbidNatives(); });
@@ -323,19 +323,6 @@ describe('answering a card [' + TARGET + ']', () => {
     expect(g.thread.blockedOn).toBe('someone');
   });
 
-  /* KNOWN GAP (see FOLLOW-UPS.md #1): renderCheckin() only draws the CKROW inline
-     field on the `quiet` card. The `nostep` and `blocked` cards set CKROW and then
-     re-render themselves unchanged, so two buttons lead nowhere. Pinned as current
-     behaviour so the migration cannot change it silently either way. */
-  it('KNOWN GAP: "actually it is blocked" on a stepless card opens no field', () => {
-    makeGoal(p, { step: null });
-    startOn('nostep');
-    h.click('[data-ck="block"]');
-    expect(p.CKROW).toBe('blocked');
-    expect(h.$('#ckWho')).toBe(null);
-    expect(h.$('[data-ck="block-save"]')).toBe(null);
-  });
-
   it('a blocked card can add a nudge step the user controls', async () => {
     const g = makeGoal(p, { thread: { status: 'blocked', blockedOn: 'Marcus' } });
     startOn('blocked');
@@ -345,13 +332,57 @@ describe('answering a card [' + TARGET + ']', () => {
     expect(g.thread.steps.map(s => s.title)).toContain('Follow up with Marcus');
   });
 
-  it('KNOWN GAP: unblocking a stepless thread sets the row but draws no field', () => {
-    const g = makeGoal(p, { step: null, thread: { status: 'blocked', blockedOn: 'Marcus' } });
+  it('unblocking a thread that already has a live step needs no row at all', () => {
+    const g = makeGoal(p, { thread: { status: 'blocked', blockedOn: 'Marcus' } });
     startOn('blocked');
     h.click('[data-ck="unblock"]');
     expect(g.thread.status).toBe('active');
-    expect(p.CKROW).toBe('next');
-    expect(h.$('#ckNextStep')).toBe(null);   // see FOLLOW-UPS.md #1
+    expect(p.CKROW).toBe(null);
+  });
+
+  /* FOLLOW-UPS.md #1, fixed in src/checkin.jsx only — legacy/index.html is the
+     pre-migration monolith and never gets this fix, so these run on [src] alone.
+     The dead end they replace is unique to the componentised renderer: setting
+     CKROW without a branch that reads it, which the monolith's own checkin
+     markup never did in the same way. */
+  (isLegacy ? describe.skip : describe)('the nostep/blocked inline rows [' + TARGET + ']', () => {
+    it('"actually it is blocked" on a stepless card opens the who-field and saves it', async () => {
+      const g = makeGoal(p, { step: null });
+      startOn('nostep');
+      h.click('[data-ck="block"]');
+      expect(p.CKROW).toBe('blocked');
+      expect(h.$('#ckWho')).not.toBe(null);
+      expect(h.$('[data-ck="block-save"]')).not.toBe(null);
+      h.type('#ckWho', 'the landlord');
+      h.click('[data-ck="block-save"]');
+      await h.settle();
+      expect(g.thread.status).toBe('blocked');
+      expect(g.thread.blockedOn).toBe('the landlord');
+    });
+
+    it('backing out of the blocked row on a stepless card returns to defining the step', () => {
+      makeGoal(p, { step: null });
+      startOn('nostep');
+      h.click('[data-ck="block"]');
+      h.click('[data-ck="row-cancel"]');
+      expect(p.CKROW).toBe(null);
+      expect(h.$('#ckStep')).not.toBe(null);
+    });
+
+    it('unblocking a stepless thread opens the next-step field and saves it', async () => {
+      const g = makeGoal(p, { step: null, thread: { status: 'blocked', blockedOn: 'Marcus' } });
+      startOn('blocked');
+      h.click('[data-ck="unblock"]');
+      expect(g.thread.status).toBe('active');
+      expect(p.CKROW).toBe('next');
+      expect(h.$('#ckNextStep')).not.toBe(null);
+      h.type('#ckNextStep', 'Call the landlord back');
+      h.click('[data-ck="next-save"]');
+      await h.settle();
+      expect(g.thread.steps.map(s => s.title)).toContain('Call the landlord back');
+      // active and NOT stepless — the exact state rule 2 exists to prevent
+      expect(p.currentStep(g.thread)).toBeTruthy();
+    });
   });
 
   it('a long block says so plainly', () => {

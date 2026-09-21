@@ -313,42 +313,68 @@ export function CheckinCard(){
     foot = <><button class="btn" data-ck="skip">Not resolved yet</button><Spacer /></>;
   }
   else if (c.t === 'nostep'){
-    const sug = autoNextTitle(c.goal, c.thread, null);
     title = 'Define the next step';
-    body = <>
-      <Subject goal={c.goal} thread={c.thread} />
-      <p class="wizq">What is the next concrete move?</p>
-      <p class="wizsub">A thread with no next step is exactly how things go quiet.</p>
-      <label class="fld"><span>Next step</span>
-        <input type="text" id="ckStep" value={sug || ''} placeholder="one specific action" /></label>
-      <label class="fld"><span>Quadrant</span>
-        <select id="ckQuad" value="q2">
-          {Object.keys(QUAD).map(q => (
-            <option key={q} value={q} selected={q === 'q2'}>{QUAD[q].n} {'—'} {QUAD[q].ax}</option>
-          ))}
-        </select></label>
-    </>;
-    foot = <>
-      <button class="btn" data-ck="block">Actually it{'’'}s blocked</button>
-      <button class="btn ghost" data-ck="skip">Skip for now</button><Spacer />
-      <button class="btn primary" data-ck="addstep">Add step</button></>;
+    /* "Actually it's blocked" sets CKROW='blocked' — same inline-row mechanism the
+       `quiet` card already uses. Rendering it here (FOLLOW-UPS.md #1) is what turns
+       that button from a dead end into the same block flow every other card has. */
+    if (CKROW === 'blocked'){
+      body = <>
+        <Subject goal={c.goal} thread={c.thread} />
+        <p class="wizq">What{'’'}s this waiting on?</p>
+        <Row card={c} />
+      </>;
+      foot = <RowFoot />;
+    } else {
+      const sug = autoNextTitle(c.goal, c.thread, null);
+      body = <>
+        <Subject goal={c.goal} thread={c.thread} />
+        <p class="wizq">What is the next concrete move?</p>
+        <p class="wizsub">A thread with no next step is exactly how things go quiet.</p>
+        <label class="fld"><span>Next step</span>
+          <input type="text" id="ckStep" value={sug || ''} placeholder="one specific action" /></label>
+        <label class="fld"><span>Quadrant</span>
+          <select id="ckQuad" value="q2">
+            {Object.keys(QUAD).map(q => (
+              <option key={q} value={q} selected={q === 'q2'}>{QUAD[q].n} {'—'} {QUAD[q].ax}</option>
+            ))}
+          </select></label>
+      </>;
+      foot = <>
+        <button class="btn" data-ck="block">Actually it{'’'}s blocked</button>
+        <button class="btn ghost" data-ck="skip">Skip for now</button><Spacer />
+        <button class="btn primary" data-ck="addstep">Add step</button></>;
+    }
   }
   else if (c.t === 'blocked'){
     const t = c.thread;
-    const bd = t.blockedSince ? daysBetween(dkey(new Date(t.blockedSince)), today()) : daysQuiet(t);
     title = 'Still waiting';
-    body = <>
-      <Subject goal={c.goal} thread={t} />
-      <p class="wizq">Waiting on {t.blockedOn || 'someone'} {'—'} {bd} day{bd===1?'':'s'}</p>
-      <p class="wizsub">Blocked threads stay visible. They don{'’'}t go dormant.</p>
-      {bd >= 10
-        ? <div class="sec" style="border-color:#5a4a24"><b>That is a long time.</b> Consider a nudge step you control {'—'} a follow-up message is itself a next step.</div>
-        : null}
-    </>;
-    foot = <>
-      <button class="btn" data-ck="unblock-nudge">Add a nudge step</button><Spacer />
-      <button class="btn" data-ck="unblock">Unblocked {'—'} define next</button>
-      <button class="btn primary" data-ck="next">Still waiting</button></>;
+    /* "Unblocked — define next" already flips t.status to active and, when the
+       thread has no live step, sets CKROW='next' before re-rendering (ckAct's
+       'unblock' case). Rendering that row here (FOLLOW-UPS.md #1) is what stops
+       the thread landing active-and-stepless — the exact state rule 2 exists to
+       prevent — with nowhere on the card to fix it. */
+    if (CKROW === 'next'){
+      body = <>
+        <Subject goal={c.goal} thread={t} />
+        <p class="wizq">Unblocked. What{'’'}s the next concrete move?</p>
+        <Row card={c} />
+      </>;
+      foot = <RowFoot />;
+    } else {
+      const bd = t.blockedSince ? daysBetween(dkey(new Date(t.blockedSince)), today()) : daysQuiet(t);
+      body = <>
+        <Subject goal={c.goal} thread={t} />
+        <p class="wizq">Waiting on {t.blockedOn || 'someone'} {'—'} {bd} day{bd===1?'':'s'}</p>
+        <p class="wizsub">Blocked threads stay visible. They don{'’'}t go dormant.</p>
+        {bd >= 10
+          ? <div class="sec" style="border-color:#5a4a24"><b>That is a long time.</b> Consider a nudge step you control {'—'} a follow-up message is itself a next step.</div>
+          : null}
+      </>;
+      foot = <>
+        <button class="btn" data-ck="unblock-nudge">Add a nudge step</button><Spacer />
+        <button class="btn" data-ck="unblock">Unblocked {'—'} define next</button>
+        <button class="btn primary" data-ck="next">Still waiting</button></>;
+    }
   }
   else if (c.t === 'quiet'){
     title = 'No logged movement';

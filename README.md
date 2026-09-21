@@ -1024,12 +1024,11 @@ dismissed.
 | footprints | 68 | schema 8→9 backfill and field-by-field coercion of a hand-edited footprint, idempotent migration, template application filling gaps only — a set lead, a named prereq and a labelled cost line all left exactly as they were — overrides storing only what changed and `reset` restoring the built-in, the classifier offering a template without applying it, a literal `$NN` becoming a cost line while saving language keeps it a target, capacity summing lead + dur + lag and `suggestDay()` placing on the full width, the prereq signal from silent to `warn` to `hard` and back on a tick, prereqs riding forward reset onto a re-booked step, committed spend aggregated per week including repeats expanded per occurrence and a skipped one costing nothing, the over-budget ladder at both rungs and staying out of scheduling, `catProjection()` netting committed out of the allocation and refusing to divide by zero, and the actual-duration flow end to end including the skip path, the noise floor, one open proposal per template, and accept/decline both spending the evidence |
 | **total** | **510** (1 failing, see above) | |
 
-Two gaps the suite found and pinned rather than fixed, since this pass was meant
-to change no behaviour — both carry a `KNOWN GAP` test and are written up in
-`FOLLOW-UPS.md`: on the check-in's `nostep` and `blocked` cards, "actually it's
-blocked" and "unblocked — define next" set the inline row and then render a card
-that has no field for it, so both lead nowhere. The `quiet` card, which is the
-only one that draws the row, works.
+One gap the suite found this pass, on the check-in's `nostep` and `blocked`
+cards — "actually it's blocked" and "unblocked — define next" set the inline row
+and then rendered a card with no field for it, so both led nowhere — is fixed.
+Both branches now draw the same `CKROW` block the `quiet` card always has, the
+two `KNOWN GAP` tests became real coverage, and `FOLLOW-UPS.md` #1 records it.
 
 What the suites still can't tell you: anything about layout, reflow, or how it
 actually looks. `npm run smoke` boots both built outputs and checks the app comes

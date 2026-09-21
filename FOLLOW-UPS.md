@@ -5,20 +5,27 @@ change, so anything below is out of scope for it. Each is pinned by a test named
 `KNOWN GAP` where one exists, so the migration cannot change it silently in either
 direction.
 
-## 1. The check-in's inline fields only exist on the `quiet` card
+## 1. The check-in's inline fields only existed on the `quiet` card — fixed
 
-`renderCheckin()` draws the `CKROW` inline row (cadence / waiting-on / next step) only in
-the `quiet` branch. Two buttons elsewhere set `CKROW` and then re-render a card that has no
-field for it, so they are dead ends:
+`renderCheckin()` used to draw the `CKROW` inline row (cadence / waiting-on / next step)
+only in the `quiet` branch. Two buttons elsewhere set `CKROW` and then re-rendered a card
+that had no field for it:
 
-- **`nostep` card → "Actually it's blocked"** sets `CKROW='blocked'`, renders no `#ckWho`
-  and no `block-save`. The thread is never marked blocked.
-- **`blocked` card → "Unblocked — define next"**, when the thread has no live step, sets
-  `CKROW='next'` and renders no `#ckNextStep`. The thread is left active *and* step-less —
-  which is the exact state rule 2 exists to prevent.
+- **`nostep` card → "Actually it's blocked"** set `CKROW='blocked'` but rendered no
+  `#ckWho` and no `block-save`. The thread was never marked blocked.
+- **`blocked` card → "Unblocked — define next"**, when the thread had no live step, set
+  `CKROW='next'` and rendered no `#ckNextStep`. The thread was left active *and*
+  step-less — the exact state rule 2 exists to prevent.
 
-The fix is to render the same `CKROW` block in the `nostep` and `blocked` branches, as the
-`quiet` branch already does. Pinned by the two `KNOWN GAP` tests in `checkin.test.js`.
+Both branches in `src/checkin.jsx` now check `CKROW` the same way the `quiet` branch
+always has: when it's set, the body swaps to `<Row card={c} />` and the footer to
+`<RowFoot />`, reusing the mechanism rather than adding a second one. The two
+`KNOWN GAP` tests in `checkin.test.js` were replaced with real coverage (open the field,
+type into it, save it, and — for the blocked→next path — confirm the thread ends up
+active with a live step, not step-less) plus a cancel-path test. All four are gated
+`isLegacy ? describe.skip : describe`: `legacy/index.html` is the pre-migration monolith
+and never receives this fix, so they run on `[src]` only, same pattern `footprint.test.js`
+and `reschedule.test.js` already use for schema-gated behaviour.
 
 ## 2. The README's schema number — fixed
 
