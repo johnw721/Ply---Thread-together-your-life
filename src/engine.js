@@ -6,6 +6,7 @@ import { actualMins, applyTemplate, blankFootprint, committedWeek, DRIFT_CADENCE
          ensureFootprint, fp, matchTemplate, normCost, normPrereq, proposeFromDuration, recordSample,
          slotDur, tmplGates, tmplGet } from './footprint.js';
 import { gDead } from './google.js';
+import { dueNotes } from './notes.js';
 import { DB, checkpoint, currentStep, eventById, finishGoal, liveGoals, logIt, newGoal, newStep, newSub, newThread, pass, save, touchThread } from './store.js';
 import { churnAt, rescheduleHistory } from './reschedule.js';
 import { addDays, clamp, daysBetween, dkey, fmtDate, parseKey, startOfWeek, toast, today, uid } from './util.js';
@@ -596,6 +597,16 @@ export function _signals(){
   for(const gate of tmplGates())
     out.push({sev:'mute', kind:'tmpl', goal:null, thread:null, gate, ref:gate.tmpl,
       days:0, label:(tmplGet(gate.tmpl)||{label:'Template'}).label, text:gate.q});
+
+  /* Today I Learned: dumb resurfacing, no generated question — see src/notes.js.
+     One chip for however many are due, the same goal:null/ref-only shape as
+     overbudget and tmpl above, since a note belongs to no goal. Deliberately
+     'mute': a low-stakes nudge to revisit something you wrote down, not a
+     thread that's stalled. */
+  const dueT = dueNotes(T);
+  if(dueT.length)
+    out.push({sev:'mute', kind:'til', goal:null, thread:null, ref:'til', days:0,
+      label:'Today I Learned', text:dueT.length+' note'+(dueT.length>1?'s':'')+' due for review'});
 
   // strongest first, then most overdue — minus anything explicitly snoozed
   const muted=new Set((DB.meta.snoozed||[]).filter(x=>x.until>today()).map(x=>x.k));

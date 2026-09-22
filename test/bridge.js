@@ -74,6 +74,9 @@ export const BRIDGE_VALUES = [
   'rescheduleSummaryFromLog','recomputeAllReschedule','rescheduleLine',
   'DRIFT_MIN_DAYS','DRIFT_SD_FACTOR','driftStats','rescheduleDrift',
   'DRIFT_CADENCE_TYPES','GOAL_GATE_FIELDS','proposeFromDrift','avgDelta','driftPhrase',
+  // notes: "today I learned" captures, resurfaced on their own SM-2 schedule
+  'EASE_START','EASE_MIN','EASE_STEP','FIRST_INTERVAL','blankSrs','newNote','addNote','noteById',
+  'deleteNote','dueNotes','reviewNote','TIL_RE','isTilCapture','stripTil',
   // seed
   'seed'
 ];

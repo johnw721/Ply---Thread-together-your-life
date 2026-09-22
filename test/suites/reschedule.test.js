@@ -303,7 +303,7 @@ d('migration 9→10 [' + TARGET + ']', () => {
   });
 
   it('refuses a file from a newer schema outright', () => {
-    expect(p.migrate(file({schema:11})).ok).toBe(false);
+    expect(p.migrate(file({schema:p.SCHEMA+1})).ok).toBe(false);
   });
 });
 

@@ -83,8 +83,10 @@ card. Exactly one step per thread is live at a time. A **sub** is a checklist li
 beneath a step, and nesting stops there.
 
 Separate stores: `events` (calendar slots, some repeating), `log` (planned/done
-history, capped at 4000 entries), and `meta` (settings, snoozes, learned type
-corrections capped at 200, weekly budget, check-in progress, list filter).
+history, capped at 4000 entries), `notes` ("today I learned" captures, each on its
+own spaced-repetition schedule — see **Notes: today I learned** below), and `meta`
+(settings, snoozes, learned type corrections capped at 200, weekly budget,
+check-in progress, list filter).
 
 ## Capture and the classifier
 
@@ -784,6 +786,42 @@ nonsense.
 Cadence is switchable in Settings — fixed weekday (default Sunday) or every N days
 since the last one. It nudges on load when due.
 
+## Notes: today I learned
+
+A note has no goal behind it — no thread, no type, no gate. It's a fact you want to
+still know in a month, captured the same way everything else is: type it into the one
+capture bar with a `til:` (or bare `til `) prefix and it's filed, no classifier
+involved. `til: closures capture references, not values` files; `till the well runs
+dry` does not — the separator has to follow `til` immediately, or a real word that
+happens to start the same way would misfire.
+
+Each note carries its own spaced-repetition schedule — a plain, binary SM-2:
+`intervalDays`, `ease`, `reps`, `lapses`, `dueAt`. Remembering climbs the same
+1 → 6 → interval×ease ladder Anki starts from; forgetting drops straight back to a
+one-day interval and nudges `ease` down, floored so a note that keeps lapsing still
+comes back inside a week rather than drifting toward never. A new note's first
+review lands the day after capture, not the same day — nothing nags you for what you
+just wrote down.
+
+**Resurfacing, not quizzing — deliberately.** v1 stops at showing the note back to
+you exactly as written. A generated quiz question over it is a real feature, not
+this one: per-note LLM cost and latency, and the quality variance of an
+automatically written question, are a separable bet that a dumb, reliable resurface
+should be proven out before taking on. See `claude/ply-features-and-roadmap.md` in
+the project docs for the reasoning.
+
+Due notes show as one chip in the signals ribbon — `mute` severity, the same
+low-stakes tier as a template suggestion, never `warn` or `hard`: revisiting
+something you wrote down is not a thread that's stalled. Opening the chip's
+resolver shows the oldest due note and three answers — **Remembered** (reschedules
+forward), **Forgot it** (back tomorrow), **Not useful** (deletes it, ⌘Z undoes it).
+Each answer is one undo step, same as every other ribbon fix.
+
+Not yet wired into the per-record `updatedAt`/merge machinery in `store.ts` — that
+exists for the cross-device sync **Backend + cross-device sync** hasn't built yet.
+Undo/redo and Export/Import already cover notes for free, since they operate on the
+whole `DB` object graph.
+
 ## Legibility, touch and focus
 
 Three things were measured rather than eyeballed, and all three came back worse than
@@ -877,7 +915,7 @@ state and re-renders — keeping this tab's zoom and cursor, and clearing the un
 stack, whose snapshots describe a history that no longer exists. If a modal or the
 check-in is open the update is deferred until it closes.
 
-**Schema and migration.** Exports carry a `schema` number (currently 9). Everything
+**Schema and migration.** Exports carry a `schema` number (currently 11). Everything
 entering the app — from `localStorage` or an imported file — goes through
 `migrate()`, which backfills fields added since, coerces malformed structures rather
 than trusting them, and refuses a file written by a newer build instead of
@@ -934,6 +972,9 @@ half-loading it. Unreadable stored data falls back to a clean DB.
   trap are done; screen-reader flow, live-region announcements for the toast, and
   reduced-motion preferences are not.
 - Arm-to-confirm has no visible countdown; the four-second lapse is silent.
+- TIL notes resurface exactly as written; there's no generated review question, and
+  no Anki export/import — both considered and deliberately deferred, see **Notes:
+  today I learned**.
 
 ## Where things live
 
@@ -945,6 +986,7 @@ src/
   cal.ts                the CAL adapter — the seam providers implement
   google.js             the Google Calendar provider behind that seam
   engine.js             classify, threads/steps/subtasks, completeStep, signals
+  notes.js              "today I learned" captures and their SM-2 schedule
   budget.js             the weekly money panel and day capacity
   footprint.js          what a step really costs: templates, prereqs, committed money
   checkin.js/.jsx       the weekly flow: the queue, and the card

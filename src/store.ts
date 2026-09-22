@@ -112,6 +112,7 @@ export function blankDB(): Database {
     goals:[],
     events:[],              // calendar events, incl. step anchors
     log:[],                 // follow-through log
+    notes:[],               // "today I learned" captures — see src/notes.js
     meta:{
       lastCheckin:null,     // dateKey
       checkinDow:0,         // 0=Sun ... 6=Sat  (fixed-day cadence; see prefs)
@@ -237,6 +238,10 @@ export function migrate(d: any): MigrateResult {
     if(typeof d.meta.rescheduleAt!=='number') d.meta.rescheduleAt = 3;
   }
 
+  if(from < 11){                                  // 10 -> 11: "today I learned" notes
+    d.notes = Array.isArray(d.notes) ? d.notes : [];
+  }
+
   /* The mirror fields have to hold whatever the file claimed: a row with a broken
      gcal object would be treated as remote and then fail every write against it. */
   for(const e of (d.events||[])){
@@ -339,6 +344,33 @@ export function migrate(d: any): MigrateResult {
               because:(x.because&&typeof x.because==='object')?x.because:{kind:'unknown', n:0},
               q:String(x.q||'Update this template?'), at:x.at||EPOCH}));
   fpm.learnAfter = num(fpm.learnAfter, 5);
+
+  /* A note out of a hand-edited file gets the same field-by-field rebuild as a
+     footprint or a cost line above: a string interval, a negative ease, a dueAt
+     that isn't a real day key would otherwise reach dueNotes()'s string
+     comparison and sort wrong forever. An empty text is dropped outright — same
+     rule addNote() applies on the way in. */
+  const validDay = v => typeof v==='string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  d.notes = (Array.isArray(d.notes)?d.notes:[]).filter(x=>x&&typeof x==='object'&&String(x.text||'').trim())
+    .map(x=>{
+      const s0=(x.srs&&typeof x.srs==='object')?x.srs:{};
+      return {
+        id:x.id||uid(), text:String(x.text).trim(),
+        createdAt:validStamp(x.createdAt)?x.createdAt:EPOCH,
+        updatedAt:validStamp(x.updatedAt)?x.updatedAt:EPOCH,
+        lastReviewedAt:validStamp(x.lastReviewedAt)?x.lastReviewedAt:null,
+        // same key order newNote()/blankSrs() build it in — migrate() runs
+        // unconditionally even on an already-current file, and a reordered
+        // rebuild would fail the export/import byte-identical round trip
+        srs:{
+          intervalDays:num(s0.intervalDays,0),
+          ease:Number.isFinite(+s0.ease)?Math.max(1.3,+s0.ease):2.5,
+          reps:Math.max(0,Math.floor(+s0.reps||0)),
+          lapses:Math.max(0,Math.floor(+s0.lapses||0)),
+          dueAt:validDay(s0.dueAt)?s0.dueAt:today()
+        }
+      };
+    });
 
   // shapes that must hold whatever the file claimed
   d.meta.budget = d.meta.budget || {weekly:0, cats:[]};

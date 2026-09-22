@@ -20,7 +20,8 @@ export const SIG_KIND={
   prereq:      'not done yet, and due',
   overbudget:  'committed past what is allocated',
   tmpl:        'a template default looks off',
-  reschedule:  'kept getting moved'
+  reschedule:  'kept getting moved',
+  til:         'notes due for review'
 };
 export const SIG_MAX=5;
 export let SIGOPEN=null, SIGALL=false, SIGFIX=null;

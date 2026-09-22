@@ -8,6 +8,7 @@ import { applyFootprint, autoNextTitle, clearGate, firstStepFor, learnType, mone
          sigLabel, signals, togglePrereq, unblockThread } from '../engine.js';
 import { acceptTmplGate, costTotal, declineTmplGate, fp, tmplGet } from '../footprint.js';
 import { openGoal } from '../goal-editor.js';
+import { deleteNote, dueNotes, reviewNote } from '../notes.js';
 import { checkpoint, currentStep, deleteGoal, logIt, newStep, save, touchThread } from '../store.js';
 import { $, addDays, esc, toast, today, uid } from '../util.js';
 import { QUAD, render } from '../views/render.jsx';
@@ -15,7 +16,7 @@ import { QUAD, render } from '../views/render.jsx';
 /* `quiet`, `deadline` and `overbudget` stay unfixable on purpose: all three are
    judgment calls rather than data gaps. Nothing here can decide for you that this
    week's dinners are worth it. */
-export const FIXABLE=new Set(['gate','nostep','unscheduled','slipped','branch','blocked','hushed','prereq','tmpl','reschedule']);
+export const FIXABLE=new Set(['gate','nostep','unscheduled','slipped','branch','blocked','hushed','prereq','tmpl','reschedule','til']);
 
 export function sigResolverHTML(s){
   const g=s.goal, t=s.thread;
@@ -132,6 +133,22 @@ export function sigResolverHTML(s){
       <button class="btn sm" data-fix="drop">Drop the goal</button>
       <button class="btn primary sm" data-fix="revive">Revive</button></div>`;
   }
+  else if(s.kind==='til'){
+    /* Dumb resurfacing: the note exactly as written, no generated question — see
+       src/notes.js. Always the oldest due one; reviewing it drops its own dueAt
+       out of the "due" set, so a chip with several behind it just means opening
+       it again after each one — same as every other multi-item signal here. */
+    const n=dueNotes()[0];
+    body = n
+      ? `<div class="fixrow" style="align-items:flex-start">
+           <span class="tiny" style="flex:1;min-width:0;white-space:pre-wrap">${esc(n.text)}</span></div>
+         <div class="fixrow">
+           <button class="btn sm" data-fix="til-delete">Not useful</button>
+           <span class="spacer" style="flex:1"></span>
+           <button class="btn sm" data-fix="til-forgot">Forgot it</button>
+           <button class="btn primary sm" data-fix="til-remembered">Remembered</button></div>`
+      : `<div class="fixrow"><span class="tiny muted">Nothing left to review.</span></div>`;
+  }
   return `<div class="sigfix" data-key="${esc(s.key)}">${head}${body}</div>`;
 }
 
@@ -218,6 +235,12 @@ export function sigFixAct(act,btn){
       unblockThread(g,t); break;
     case 'revive':
       touchThread(t); break;                          // movement is what un-hushes it
+    case 'til-remembered':{
+      const n=dueNotes()[0]; if(n) reviewNote(n, true); break; }
+    case 'til-forgot':{
+      const n=dueNotes()[0]; if(n) reviewNote(n, false); break; }
+    case 'til-delete':{
+      const n=dueNotes()[0]; if(n) deleteNote(n.id); break; }
     case 'drop':
       // nothing else is open, so this one can afford a real dialog
       setSigFix(null); renderSignals();
@@ -227,6 +250,10 @@ export function sigFixAct(act,btn){
       return;
   }
   setSigFix(null); save(); render();
-  toast(act==='revive'?'Back in rotation.':act==='drop'?'Dropped.':'Done — no check-in needed.');
+  toast(act==='revive'?'Back in rotation.':act==='drop'?'Dropped.'
+    :act==='til-remembered'?'Remembered — scheduled ahead.'
+    :act==='til-forgot'?'Forgot — back tomorrow.'
+    :act==='til-delete'?'Deleted — ⌘Z to undo.'
+    :'Done — no check-in needed.');
 }
 

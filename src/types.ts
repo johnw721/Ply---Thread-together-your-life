@@ -351,6 +351,29 @@ export interface TemplateGate {
   at: Stamp;
 }
 
+/** Spaced-repetition state for one note. Binary quality only — remembered or
+    forgot — since v1 resurfaces the note exactly as written rather than asking
+    a generated question; see src/notes.js. */
+export interface NoteSrs {
+  intervalDays: number;
+  ease: number;
+  reps: number;
+  lapses: number;
+  dueAt: DateKey;
+}
+
+/** A "today I learned" capture: short, standalone, no goal behind it. Reviewed
+    on its own spaced-repetition schedule rather than resurfaced by an
+    AI-written quiz question — see src/notes.js for why v1 stops there. */
+export interface Note {
+  id: string;
+  text: string;
+  createdAt: Stamp;
+  updatedAt: Stamp;
+  lastReviewedAt: Stamp | null;
+  srs: NoteSrs;
+}
+
 /** One object graph, one undo step per action. */
 export interface DB {
   v: number;
@@ -359,4 +382,5 @@ export interface DB {
   events: PlyEvent[];
   log: LogEntry[];
   meta: Meta;
+  notes: Note[];
 }

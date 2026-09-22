@@ -3,6 +3,7 @@ import { PIPELINE_STAGES } from './types.js';
 
 import { CAL } from './cal.js';
 import { DB, addEvent, blankDB, currentStep, newEvent, newGoal, newStep, newSub, newThread, save, setDB } from './store.js';
+import { blankSrs, newNote } from './notes.js';
 import { addDays, today, uid } from './util.js';
 
 /* ===================== [SECTION: SEED] ===================== */
@@ -153,6 +154,13 @@ export function seed(){
     {id:uid(), name:'Car fund',       amount:150, goalId:car.id},
     {id:uid(), name:'Going out',      amount:110, goalId:null}
   ]};
+
+  /* --- a couple of TIL notes, so a fresh install shows the review chip --- */
+  const til1=newNote('NetworkPolicy in Kubernetes is default-allow until one exists in a namespace — then that namespace flips to default-deny for whatever it selects.');
+  til1.srs=Object.assign(blankSrs(),{dueAt:today()});          // due right away, so the chip shows on first run
+  const til2=newNote('Terraform state locking uses a DynamoDB table, not S3 — S3 only holds the state file itself.');
+  DB.notes.push(til1, til2);
+
   save();
 }
 
