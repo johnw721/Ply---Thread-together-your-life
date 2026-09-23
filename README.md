@@ -1024,7 +1024,7 @@ src/
   google.js             the Google Calendar provider behind that seam
   engine.js             classify, threads/steps/subtasks, completeStep, signals
   notes.js              "today I learned" captures and their SM-2 schedule
-  budget.js             the weekly money panel and day capacity
+  budget.js/.jsx        the weekly money panel: the figures and actions, and the markup; day capacity
   footprint.js          what a step really costs: templates, prereqs, committed money
   checkin.js/.jsx       the weekly flow: the queue, and the card
   goal-editor.js/.jsx   the goal editor: the actions (and the other dialogs), and the markup
@@ -1067,7 +1067,7 @@ npm run typecheck
 npm run build && npm run smoke
 ```
 
-`vitest` + `jsdom`. **510 assertions, 509 passing.**
+`vitest` + `jsdom`. **737 assertions, 736 passing.**
 
 That equivalence is the point rather than a curiosity. `test/harness.js` boots
 either `legacy/index.html` — the last single-file build, kept precisely so this
@@ -1076,11 +1076,13 @@ either way. The suites were written against the monolith and made to pass
 *before* anything moved. While both targets agree, the restructuring provably
 changed no behaviour, and CI fails on the day they stop agreeing.
 
-The equivalence claim covers the 422 assertions that predate schema 8. Two suites
-are newer than the monolith and have nothing in `legacy/index.html` to pin
-against: `stamp` (schema 8's `updatedAt`) and `footprint` (schema 9). The
-footprint suite skips itself on the legacy target for exactly that reason; the
-stamp suite does not, and fails there.
+The equivalence claim covers the 422 assertions that predate schema 8. The suites
+added since are for features newer than the monolith — `stamp` (schema 8), `footprint`
+(9), `reschedule` (10), `notes` and `cards` (11) — and skip themselves on the legacy
+target, where there is nothing to pin. `goal-editor` and `budget` were written to pin
+the string versions before those were converted, so they run on both targets; only
+their footprint and committed-spend blocks are `[src]`-only. Against the monolith:
+510 pass, 227 skipped.
 
 One assertion fails on both targets. It is pre-existing, it predates all of this,
 and it is left failing rather than quietly adjusted: the install hint staying
@@ -1094,21 +1096,35 @@ dismissed.
 | engine | 40 | a live first step for every type, completeStep per type, the four thread relationships, the conditional refusing to guess, cyclical re-booking including all-day and never into the past, five completions booking exactly five follow-ups, the archive, reopen not returning a dead goal, and follow-through and streaks |
 | signals | 32 | every kind and severity, the escalation ladder at each boundary, hushing at 3× and un-hushing on movement alone, blocked and near-deadline exemptions, snooze not reaching the agenda, ribbon grouping, the five-chip cap and `+n more`, and the fixable set |
 | subtasks | 32 | one level only, last-tick closing the step through the normal path, carry-forward, stable ordering, partial progress not inflating a real metric, the card pill, in-place rename, reorder both ways, and the inline add keeping focus |
-| check-in | 52 | agenda bucketing, the queue cap and deferral, progress persisting, resuming and being discarded when stale, every card's actions end to end, the scheduling stage, and a summary that leads with the week ahead |
-| google provider | 210 | auth state (no client id, connect, scope, the token never reaching `localStorage`, one silent renewal then `stale`, offline vs expired, revoke-and-keep-your-schedule); mapping timed, all-day and pre-expanded recurring events; merged reads; foreign events read-only; a hostile remote title escaped everywhere; create, patch-in-place re-anchor, delete, and a create cancelled before it flushed; unbounded token-minting sync with no `timeMin`, incremental replay, multi-page paging, `410` recovery, window pruning, the leader lease; remote-wins-on-time, Ply-wins-on-step-link, tombstone instead of silent unanchor; the offline queue holding, coalescing, replaying in order and surviving a reload; remote events counted against the day budget and `suggestDay()`; schema 6→7 migration and coercion; export stripping the foreign cache; and the Settings panel's three states |
-| local provider (regression) | 29 | the local path through everything the provider touched: still the default with no network reached, anchor/re-anchor/unanchor purely local, the plain unscheduled wording, one anchor as one undo step, repeats still expanding at read time, and a local export carrying every event |
+| check-in | 54 | agenda bucketing, the queue cap and deferral, progress persisting, resuming and being discarded when stale, every card's actions end to end, the scheduling stage, and a summary that leads with the week ahead |
+| google provider | 48 | auth state (no client id, connect, scope, the token never reaching `localStorage`, one silent renewal then `stale`, offline vs expired, revoke-and-keep-your-schedule); mapping timed, all-day and pre-expanded recurring events; merged reads; foreign events read-only; a hostile remote title escaped everywhere; create, patch-in-place re-anchor, delete, and a create cancelled before it flushed; unbounded token-minting sync with no `timeMin`, incremental replay, multi-page paging, `410` recovery, window pruning, the leader lease; remote-wins-on-time, Ply-wins-on-step-link, tombstone instead of silent unanchor; the offline queue holding, coalescing, replaying in order and surviving a reload; remote events counted against the day budget and `suggestDay()`; schema 6→7 migration and coercion; export stripping the foreign cache; and the Settings panel's three states |
+| local provider (regression) | 6 | the local path through everything the provider touched: still the default with no network reached, anchor/re-anchor/unanchor purely local, the plain unscheduled wording, one anchor as one undo step, repeats still expanding at read time, and a local export carrying every event |
 | pwa · notifications | 40 | the service-worker guard and what blocks it, the install hint's states, and the three notifications firing once each |
 | dialogs · focus | 16 | the dialog semantics, the Tab trap wrapping at both ends and leaving the middle alone, focus returning to the opener, arm-to-confirm arming and disarming, the in-app dialog cancelling and undoing, and the natives armed to throw while every inline flow is driven |
 | drag | 17 | mouse drag between quadrants, tap-is-not-a-drag under 6px, `Escape` cancel, touch needing the grip, a drop landing at the time it was dropped on snapped to the quarter hour and clamped at both edges, re-slotting without orphaning, week columns scheduling on their own day, and a subtask drop scheduling its parent and floating that sub as one undo step |
 | views | 35 | one row per goal with the counts adding up, every `goalState()` branch, worst-first sorting, the type filter and the archive, the four quadrants and the tray, the week grid and its columns, the quarter roadmap and its density bars, and a hostile string rendering as text across all four views |
 | footprints | 68 | schema 8→9 backfill and field-by-field coercion of a hand-edited footprint, idempotent migration, template application filling gaps only — a set lead, a named prereq and a labelled cost line all left exactly as they were — overrides storing only what changed and `reset` restoring the built-in, the classifier offering a template without applying it, a literal `$NN` becoming a cost line while saving language keeps it a target, capacity summing lead + dur + lag and `suggestDay()` placing on the full width, the prereq signal from silent to `warn` to `hard` and back on a tick, prereqs riding forward reset onto a re-booked step, committed spend aggregated per week including repeats expanded per occurrence and a skipped one costing nothing, the over-budget ladder at both rungs and staying out of scheduling, `catProjection()` netting committed out of the allocation and refusing to divide by zero, and the actual-duration flow end to end including the skip path, the noise floor, one open proposal per template, and accept/decline both spending the evidence |
-| **total** | **510** (1 failing, see above) | |
+| goal editor | 46 | every SMART field shown and read back, blanks keeping or clearing as before, a retype queueing the deadline question and teaching the classifier; a rename committing on change with the dialog's nodes untouched and unsaved typing kept; thread name/relation, backlog rename/delete/reorder with the arrows disabled at the ends; add/remove thread, done pulling from the backlog or asking for the next step, the scheduling row (current slot, all-day, cancel), the block row by Enter and cancel, unblock, a dormant trigger firing, branches, pipeline entries, Escape and Enter in inline fields, Space on a subtask; finish, convert, the follow-through panel; `[src]` only: focus surviving a refresh, and the whole footprint row — lead/lag, prerequisites, cost lines with categories, timing, templates |
+| budget | 60 | the panel drawn from the DB (shares, the relative split with no weekly amount, over-allocation rescaling with the budget line, zero and dash cases, only threshold goals offered as links); every projection note and the Log button; live repaint while typing with no DB write and no undo entry, the field being typed into never rebuilt and an emptied amount left empty; one change one undo step, a commit taking every field as it stands; add, remove and Log; committed spend in the bar, the summary and the notes, including while typing |
+| reschedule | 60 | source tagging at every anchor call site, which anchors count as churn, the durable summary, re-derivation across merge and adopt, migration 9→10, the churn signal ladder and its resolver, drift feeding the template gate, the display lines, and `unblockThread()`'s conditional re-book |
+| stamp | 18 | migration 7→8 backfill, the factories, `save()` maintaining `updatedAt`, and which record owns a stamp |
+| notes | 26 | `til:` capture filing a note rather than a goal, due the day after capture, SM-2 review with binary quality, delete, the ribbon signal and its resolver, and migration 10→11 |
+| cards | 33 | `parseCard()` reading Q/A and cloze markup, hidden-until-revealed rendering escaped either way, the Edit box's Hide, Show answer then grade, the temporary syntax tips, and `meta.tips` backfill |
+| harness | 3 | the harness boots either target and hands back the same API |
+| **total** | **737** (1 failing, see above) | |
 
 One gap the suite found this pass, on the check-in's `nostep` and `blocked`
 cards — "actually it's blocked" and "unblocked — define next" set the inline row
 and then rendered a card with no field for it, so both led nowhere — is fixed.
 Both branches now draw the same `CKROW` block the `quiet` card always has, the
 two `KNOWN GAP` tests became real coverage, and `FOLLOW-UPS.md` #1 records it.
+
+The budget suite found one too. The panel used to be a string wrapped in a component
+that re-rendered after every save, and a committed edit changes the string, so the
+panel's markup was replaced a moment after you left a field — destroying the field you
+had just tabbed into. The monolith never re-rendered on that path, so the migration
+introduced it. The panel is a component now, focus stays where Tab put it, and a test
+pins it (`FOLLOW-UPS.md` #3).
 
 What the suites still can't tell you: anything about layout, reflow, or how it
 actually looks. `npm run smoke` boots both built outputs and checks the app comes
@@ -1128,7 +1144,7 @@ best statement of what each area is supposed to guarantee.
 | undo · ribbon · tabs | 38 | undo/redo, no-op checkpoints staying off the stack, multi-save actions collapsing to one step, view state surviving a restore; ribbon grouping and the five-chip cap, snooze one/all, snoozed threads still reaching the agenda; `storage` adoption, malformed events ignored, deferral while a modal is open |
 | repeats · capacity · learning · drag | 84 | migration accept/refuse paths, occurrence expansion, virtual ids, skipping an occurrence and the series head, cyclical re-anchoring; budget maths; learned corrections matching, reinforcing and suppressing the review gate; mouse drag, tap-is-not-a-drag, touch scroll vs grip drag, `Escape` cancel, listeners surviving re-renders |
 | audit | 60 | export→import→export byte-identical, a hand-written v1 file migrated then actually rendered and walked, `localStorage` migration, unreadable data falling back clean, five habit completions booking exactly five follow-ups, classifier precision cases caught by a probe |
-| money budget | 69 | proportional widths summing to 100%, live typing without DB writes, commit-on-change as one undo step, over-allocation rescaling and the budget line, add/remove undoable, projection maths, logging a contribution advancing the goal, malformed budget data coerced, a deleted goal degrading gracefully |
+| money budget | 69 | *(replaced by `budget` above)* proportional widths summing to 100%, live typing without DB writes, commit-on-change as one undo step, over-allocation rescaling and the budget line, add/remove undoable, projection maths, logging a contribution advancing the goal, malformed budget data coerced, a deleted goal degrading gracefully |
 | check-in independence | 68 | the full escalation ladder at each boundary, hushed threads leaving the agenda, blocked and near-deadline exemptions, every inline resolver end to end, the queue cap, progress persisting and resuming, stale progress discarded |
 | subtasks | 84 | 3→4 migration and coercion, subs staying off the matrix, last-tick closing the step through the normal path, carry-forward, ordering, partial progress, in-place renaming with blanks ignored, reorder both ways, the card pill and expansion, the checklist not hijacking the drag |
 | list view | 54 | reachable by button and by `4`, one row per live goal with the type counts adding up, every `goalState()` branch including a blocked goal still reporting its step, worst-first sorting, toggling hiding and restoring rows undoably, the all-hidden empty state and its way back, the filter persisting and junk in it discarded, subtasks expanding and ticking from a row, rows opening the goal while the pill doesn't |
@@ -1139,8 +1155,7 @@ best statement of what each area is supposed to guarantee.
 | rename | 13 | data written under the old `thread.v1` key adopted on first load, migrated forward, rewritten under `ply.v1`, and the old key left intact as a backup; title, header, error messages and export stamp all renamed |
 | legibility · touch · focus | 43 | every palette colour meeting 4.5:1 computed from the source, `--faint` staying rare, nothing under 10px, the coarse-pointer block resizing each named control, the phone header rules, the focus ring's reach, and the Tab trap wrapping at both ends while leaving the middle alone plus focus returning to the opener |
 | step + subtask drops | 31 | subtask lines being drag sources in the card and the list with a grip, a sub drop scheduling the parent at the dropped time and floating that sub without adding, removing or re-doning anything, both halves undoing as one, week columns scheduling on their own day, a sub dropped on a quadrant re-filing its parent, and the checkbox still being a checkbox rather than a handle |
-| goal editor | 46 | every SMART field shown and read back, blanks keeping or clearing as before, a retype queueing the deadline question and teaching the classifier; a rename committing on change with the dialog's nodes untouched and unsaved typing kept; thread name/relation, backlog rename/delete/reorder with the arrows disabled at the ends; add/remove thread, done pulling from the backlog or asking for the next step, the scheduling row (current slot, all-day, cancel), the block row by Enter and cancel, unblock, a dormant trigger firing, branches, pipeline entries, Escape and Enter in inline fields, Space on a subtask; finish, convert, the follow-through panel; `[src]` only: focus surviving a refresh, and the whole footprint row — lead/lag, prerequisites, cost lines with categories, timing, templates |
-| **total** | **797** | |
+| **total** | **751** | |
 
 What the suites can't tell you: anything about layout, reflow or how it actually
 looks. Every visual claim above was checked by extracting the real markup and CSS and

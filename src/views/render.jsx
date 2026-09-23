@@ -87,10 +87,9 @@ export function renderBody(){
 }
 
 /* ---------- the view host ----------
-   All four views are components. The string path below is kept for the moment
-   because the handover logic is what lets a view be converted one at a time,
-   and the check-in and the goal editor are still strings — but nothing routes
-   through it now.
+   All four views are components, and so are the check-in, the goal editor and
+   the budget panel. The string path below is kept only as the seam a future
+   string view would enter through — nothing routes through it now.
 
    A component view skips captureView()/restoreView() entirely. It does not need
    them: Preact patches the rows that changed instead of replacing the subtree,
