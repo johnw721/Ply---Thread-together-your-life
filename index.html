@@ -535,6 +535,44 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none}
   .rmhead,.rmrow{grid-template-columns:200px 1fr}
 }
 #btnCheckin .short{display:none}
+@media (max-width:380px){ .brand{font-size:0;gap:0} }   /* the mark alone, on the narrowest phones */
+
+/* ---------- Google Calendar: the header button and its dialog ---------- */
+.calbtn{display:inline-flex;align-items:center;gap:6px;position:relative;white-space:nowrap}
+.calbtn svg{flex:none}
+.calbtn .caldot{width:7px;height:7px;border-radius:99px;flex:none;display:none;position:absolute;left:19px;top:5px;
+  box-shadow:0 0 0 2px var(--panel)}
+.calbtn[data-state="off"]{color:var(--accent)}
+.calbtn[data-state="good"] .caldot{display:block;background:var(--good)}
+.calbtn[data-state="warn"] .caldot{display:block;background:var(--warn)}
+.calbtn[data-state="bad"] .caldot{display:block;background:var(--bad)}
+.calbtn[data-state="bad"]{color:var(--bad)}
+.gcwhat{margin:0 0 14px;padding-left:18px;color:var(--dim);font-size:12.5px}
+.gcwhat li{margin-bottom:4px}
+.gcsteps{list-style:none;margin:0 0 12px;padding:0;display:flex;flex-direction:column;gap:10px}
+.gcstep{display:grid;grid-template-columns:24px 1fr;gap:10px;align-items:start;
+  border:1px solid var(--line);border-radius:var(--r);padding:11px 12px;background:var(--panel2)}
+.gcnum{width:22px;height:22px;border-radius:99px;display:grid;place-items:center;font-size:11.5px;font-weight:650;
+  background:var(--accent-dim);color:var(--accent)}
+.gcstep.done .gcnum{background:#12251f;color:var(--good)}
+.gcsttl{font-weight:600;margin-bottom:3px}
+.gcstep .tiny .btn{margin-left:4px;vertical-align:baseline;text-decoration:none;display:inline-block;margin-top:4px}
+.gcstep input{margin-top:4px}
+.gccopy{display:flex;align-items:center;gap:8px;margin-top:8px;background:var(--bg);border:1px solid var(--line);
+  border-radius:var(--r2);padding:5px 6px 5px 9px}
+.gccopy .mono{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:all}
+.gcmsg{margin-top:5px;color:var(--dim2)}
+.gcmsg.good{color:var(--good)}.gcmsg.warn{color:var(--warn)}.gcmsg.bad{color:var(--bad)}
+.gcadv{margin-top:4px}
+.gcadv summary{cursor:pointer;padding:2px 0}
+.gcerr{margin-top:12px;border:1px solid #5a2b2b;background:#2a1719;border-radius:var(--r);padding:10px 12px;color:var(--text)}
+.gcerr a{color:var(--accent)}
+.gcstatus{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:var(--r);
+  padding:12px;background:var(--panel2)}
+.gcstatus .gcdot{width:9px;height:9px;border-radius:99px;margin-top:5px;flex:none;background:var(--good)}
+.gcstatus[data-state="warn"] .gcdot{background:var(--warn)}
+.gcstatus[data-state="bad"] .gcdot{background:var(--bad)}
+.gcid{word-break:break-all}
 
 @media (max-width:760px){
   .matrix{grid-template-columns:1fr}.weekgrid{grid-template-columns:1fr}
@@ -548,6 +586,12 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none}
   header .spacer{display:none}
   #btnCheckin{margin-left:auto}
   #btnCheckin .long{display:none}
+  .calbtn .long{display:none}          /* the icon and its status dot carry it on a phone */
+  /* the calendar button costs the row ~45px; win it back from padding so the
+     menu stays on the first row down to 360px, as it did before the button */
+  header{gap:6px}
+  #btnUndo,#btnRedo,.calbtn,#btnMenu{padding-left:7px;padding-right:7px}
+  #btnCheckin{padding-left:9px;padding-right:9px}
   #btnCheckin .short{display:inline}
   .viewhead{flex-wrap:wrap}
   .viewhead .nav{width:100%;display:flex;gap:6px}
@@ -745,6 +789,9 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none}
   <div class="spacer"></div>
   <button class="btn ghost" id="btnUndo" title="Nothing to undo" disabled>&#8634;</button>
   <button class="btn ghost" id="btnRedo" title="Nothing to redo" disabled>&#8635;</button>
+  <button class="btn ghost calbtn hidden" id="btnCal" data-state="off" title="Connect Google Calendar" aria-label="Connect Google Calendar"
+    ><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="11.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M1.75 6.25h12.5M5 1.25v3M11 1.25v3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg
+    ><span class="caldot"></span><span class="long">Connect calendar</span></button>
   <button class="btn" id="btnCheckin"><span class="long">Weekly check-in</span><span class="short">Check-in</span> <span id="checkinBadge" class="pill hidden"></span></button>
   <button class="btn ghost" id="btnMenu">&#8942;</button>
 </header>

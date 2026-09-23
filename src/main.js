@@ -5,8 +5,9 @@ import { openConfirm } from './components/dialogs.js';
 import { closeModal } from './components/modal.jsx';
 import { initRibbon, setSigOpen } from './components/ribbon.js';
 import { checkinDue } from './engine.js';
-import { initModalRouter, openPrefs } from './goal-editor.js';
+import { initModalRouter, openPrefs, uiAct } from './goal-editor.js';
 import { gCursor, gFlush, gNote, gOn, gStart, gSync } from './google.js';
+import { gcAct, initGConnect } from './gcal-connect.js';
 import { notifOn, notifStart, notifTick, plyGoTo } from './notify.js';
 import { registerSW, renderInstallBar, setInstallEvt } from './pwa.js';
 import { seed } from './seed.js';
@@ -41,6 +42,7 @@ export function bootstrap({ seed: wantSeed = true } = {}){
 
   initStorageSync();
   initModalRouter();
+  initGConnect();
   initRibbon();
 
   $('#zoombar').onclick=e=>{ const b=e.target.closest('[data-z]'); if(!b)return;
@@ -56,12 +58,14 @@ export function bootstrap({ seed: wantSeed = true } = {}){
   $('#btnCheckin').onclick=()=>startCheckin();
   $('#btnUndo').onclick=()=>undo();
   $('#btnRedo').onclick=()=>redo();
+  { const b=$('#btnCal'); if(b) b.onclick=()=>gcAct('gc-open'); }
 
   $('#btnMenu').onclick=e=>{
     e.stopPropagation();
     const old=$('.menu'); if(old){old.remove();return;}
     const m=el(`<div class="menu">
       <button data-m="prefs">Settings</button>
+      <button data-m="gcal">Google Calendar&hellip;</button>
       <button data-m="checkin">Run check-in now</button>
       <hr>
       <button data-m="export">Export JSON</button>
@@ -73,6 +77,7 @@ export function bootstrap({ seed: wantSeed = true } = {}){
     m.onclick=ev=>{
       const a=ev.target.dataset.m; m.remove();
       if(a==='prefs') openPrefs();
+      if(a==='gcal') gcAct('gc-open');
       if(a==='checkin') startCheckin();
       if(a==='export') exportJSON();
       if(a==='import') importJSON();
@@ -105,6 +110,14 @@ export function bootstrap({ seed: wantSeed = true } = {}){
      the capture field. */
   window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); setInstallEvt(e); renderInstallBar(); });
   window.addEventListener('appinstalled', ()=>{ setInstallEvt(null); DB.meta.installHidden=true; save(); renderInstallBar(); });
+  /* The install bar lives under #signals, outside #modalRoot, so the modal
+     router never sees its buttons. Without this, Install and the dismiss
+     button on the bar were dead, and a closed hint came back on every load.
+     Delegated from document because the bar is rebuilt each time it renders. */
+  document.addEventListener('click',e=>{
+    const b=e.target.closest && e.target.closest('#installbar [data-ui]');
+    if(b) uiAct(b.dataset.ui,b);
+  });
 
   render();
   /* The provider starts itself if it was left connected: pull on load, then on

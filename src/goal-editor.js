@@ -8,6 +8,7 @@ import { closeModal, openModal } from './components/modal.jsx';
 import { DOWS, buildGoalFrom, classify, completeStep, learnType, money, moveItem, shortName, subs, toggleSub, togglePrereq, unblockThread } from './engine.js';
 import { TEMPLATES, applyTemplate, clearActual, costTotal, ensureFootprint, fpMeta, normCost, normPrereq, startActual, stopActual, timing, tmplAdd, tmplBuiltin, tmplEdited, tmplGet, tmplHide, tmplList, tmplReset, tmplSet, tmplShow } from './footprint.js';
 import { gConnect, gDead, gDisconnect, gFlush, gForeign, gPrefsHTML, gReadPrefs, gSync, setGErr } from './google.js';
+import { gcAct } from './gcal-connect.js';
 import { installPrefsHTML, notifDisable, notifEnable, notifPrefsHTML, notifWanted } from './notify.js';
 import { doInstall, renderInstallBar } from './pwa.js';
 import { DB, MEMONLY, addEvent, addGoal, checkpoint, currentStep, deleteGoal, eventById, finishGoal, goalById, logIt, masterEvent, newEvent, newStep, newThread, removeEvent, save, skipOccurrence, threadById, touchThread } from './store.js';
@@ -234,13 +235,18 @@ export const ACT_LABEL={
   'entry-add':'that pipeline entry', 'ev-skip':'skipping that occurrence',
   'pf-forget':'forgetting the learned types', finish:'completing that goal',
   'g-connect':'connecting Google Calendar', 'g-off':'disconnecting Google Calendar',
-  'g-sync':'that sync'
+  'g-sync':'that sync',
+  'gc-connect':'connecting Google Calendar', 'gc-off':'disconnecting Google Calendar', 'gc-sync':'that sync'
 };
 
 export function uiAct(a,btn){
   // the dialog's own callback owns the checkpoint, so don't take a vague one here
   if(a==='confirm-yes'){ const cb=takeConfirmCb(); closeModal(); if(cb) cb(); return; }
   checkpoint(ACT_LABEL[a]);
+  /* the Google Calendar dialog owns its own actions — see src/gcal-connect.js.
+     From Settings, carry a half-typed client id across rather than dropping it. */
+  if(a==='gc-open' && $('#pfGId')){ gReadPrefs(); save(); }
+  if(a.startsWith('gc-')){ gcAct(a,btn); return; }
   if(a==='dn-save'){
     const g=goalById(btn.dataset.g), t=threadById(btn.dataset.g,btn.dataset.t);
     const v=$('#dnStep').value.trim(); if(!v){toast('Name the step.');return;}

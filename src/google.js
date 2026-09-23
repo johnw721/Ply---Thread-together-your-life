@@ -575,8 +575,10 @@ export function gPrefsHTML(){
       Connecting reads your calendar into the day and week load, and puts every step you schedule
       onto it. Your goals stay here either way.</div>
     ${field}
-    <button class="btn sm primary" data-ui="g-connect" style="margin-top:10px"
-      ${id?'':'disabled title="Add a client id first"'}>Connect Google Calendar</button>`;
+    <div class="row" style="margin-top:10px;flex:none">
+      <button class="btn sm primary" data-ui="g-connect" style="flex:none"
+        ${id?'':'disabled title="Add a client id first"'}>Connect Google Calendar</button>
+      <button class="btn sm ghost" data-ui="gc-open" style="flex:none">Walk me through setup</button></div>`;
 
   const n=gPending();
   return `<div class="tiny muted">Connected${m.account?` as <b style="color:var(--text)">${esc(m.account)}</b>`:''},

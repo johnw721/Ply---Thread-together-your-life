@@ -24,6 +24,9 @@ export const BRIDGE_VALUES = [
   'gISO','gReadTime','gToRow','gFromRow','gWinFrom','gWinTo','inWindow','gDead','gForeign',
   'gEnqueue','gPending','gFlush','gLease','gSync','gApply','gCancel','gDrop','gAdopt','gMerge',
   'gStart','gStop','gChips','gAct','gPrefsHTML','gReadPrefs',
+  // the Google Calendar connect dialog — src only
+  'GC_LINKS','gcAct','gcCheckId','gcFace','gcHTML','gcHint','gcOpen','gcReadFields','gcReset','gcState',
+  'openGConnect','paintCalBtn',
   // budget
   'BUDGET_COLOURS','budget','catColour','budgetState','fundableGoals','catProjection','logContribution',
   'dayBudget','loadState','loadBar','paintBudget','commitBudget','budAct',

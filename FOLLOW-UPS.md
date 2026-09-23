@@ -72,13 +72,18 @@ Real-Chromium screenshots of the demo panel, saved and mid-typing, before vs aft
 size, max per-pixel difference 42/255, from whitespace between text nodes; nothing
 rearranged.
 
-## 4. Two PWA assertions fail, on both targets
+## 4. ~~Two PWA assertions fail, on both targets~~ — resolved 2026-09-23
 
-`hands the notification to the service worker when there is one`, and `the install hint is
-dismissible, and stays dismissed`. They fail identically against `legacy/index.html` and
-against `src/`, so they predate this migration and are not caused by it. They are left
-failing rather than skipped or adjusted, because a suite that goes green by being edited
-is worth nothing.
+`hands the notification to the service worker when there is one` was already passing on
+both targets by the time this was picked up; an earlier change fixed it.
+
+`the install hint is dismissible, and stays dismissed` was a real bug that users could hit, not a test
+problem. The install bar renders after `#signals`, outside `#modalRoot`, and `uiAct()` is
+only reachable through the modal router's listener on `#modalRoot`. So both buttons on the
+bar, **Install** and **×**, did nothing: clicking × never set `installHidden`, and the hint came
+back on every visit. (Settings' "Install Ply" button worked because it is inside a modal.)
+Fixed with a delegated `document` click listener for `#installbar [data-ui]` that routes
+to `uiAct()`, in `src/main.js` and `legacy/index.html`. The test was not edited.
 
 ## 5. The goal editor was still built as a string — fixed
 

@@ -5106,6 +5106,14 @@ document.addEventListener('keydown',e=>{
    the capture field. */
 window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); INSTALL_EVT=e; renderInstallBar(); });
 window.addEventListener('appinstalled', ()=>{ INSTALL_EVT=null; DB.meta.installHidden=true; save(); renderInstallBar(); });
+/* The install bar lives under #signals, outside #modalRoot, so the modal
+   router never sees its buttons. Without this, Install and the dismiss
+   button on the bar were dead, and a closed hint came back on every load.
+   Delegated from document because the bar is rebuilt each time it renders. */
+document.addEventListener('click',e=>{
+  const b=e.target.closest && e.target.closest('#installbar [data-ui]');
+  if(b) uiAct(b.dataset.ui,b);
+});
 
 render();
 wireDrag();          // once — #view outlives every render

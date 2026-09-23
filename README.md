@@ -418,8 +418,34 @@ Settings stores it in `DB.meta.google.clientId` without pretending otherwise.
 4. Under **Authorized JavaScript origins**, add `http://localhost:5173`.
 5. Leave **Authorized redirect URIs** empty. The GIS token client uses the
    JavaScript origin, not a redirect.
-6. Paste the id into `⋮ → Settings → Google Calendar`, or set it at build time (see
-   below), then **Connect Google Calendar**.
+6. Paste the id into the **Google Calendar** dialog — the calendar button in the
+   header, or `⋮ → Google Calendar…` — or set it at build time (see below), then
+   **Connect Google Calendar**. The Settings field still works too.
+
+### The connect dialog
+
+`src/gcal-connect.js`. The header carries a calendar button whose dot says the state
+at a glance — none when nothing is connected, green when it is, amber with changes
+waiting or a sync error, red when access has expired — and it opens one dialog that
+picks its face from state:
+
+| face | when | what it shows |
+|---|---|---|
+| setup | no client id | steps 1–5 above as four numbered cards, each with a link into the right Cloud console page, this page's own origin with a **Copy** button, and the id field |
+| ready | an id is saved or built in | what connecting does, and one button |
+| linked | connected | the account, the calendar, last sync, **Sync now**, **Disconnect** (arm-to-confirm) — or **Reconnect** when access has expired |
+| origin | `file://` | why it can't sign in here, and how to run it so it can. The header button is hidden in this case unless something is already connected |
+
+The id field reads a paste the way people get it wrong: a client **secret**
+(`GOCSPX-…`, which sits next to the id on the same Google page) is refused with a
+reason, whitespace is refused, anything not ending `.apps.googleusercontent.com` is
+warned about but still allowed. Feedback is live and never re-renders the dialog, so
+the caret stays put. A failed sign-in keeps the dialog open with what to check —
+pop-ups, the **Test users** list, the exact origin to add — and leaves the id field on
+screen, since a failure right after pasting is usually the id. GIS is loaded when the
+dialog opens rather than on the click, so the token popup opens inside the click's
+user-activation window. It's the same provider underneath: `gConnect()`, `gSync()`
+and `gDisconnect()` are unchanged.
 
 **Why `http://localhost:5173` and nothing else, for now.** Google matches the
 browser's *origin*, and a page opened from disk has origin `null` — `file://` is not
@@ -1022,6 +1048,7 @@ src/
   store.ts              DB, migrate, save/load, undo/redo, cross-tab sync
   cal.ts                the CAL adapter — the seam providers implement
   google.js             the Google Calendar provider behind that seam
+  gcal-connect.js       the header calendar button and the guided connect dialog
   engine.js             classify, threads/steps/subtasks, completeStep, signals
   notes.js              "today I learned" captures and their SM-2 schedule
   budget.js/.jsx        the weekly money panel: the figures and actions, and the markup; day capacity
@@ -1067,7 +1094,7 @@ npm run typecheck
 npm run build && npm run smoke
 ```
 
-`vitest` + `jsdom`. **737 assertions, 736 passing.**
+`vitest` + `jsdom`. **765 assertions, all passing.**
 
 That equivalence is the point rather than a curiosity. `test/harness.js` boots
 either `legacy/index.html` — the last single-file build, kept precisely so this
@@ -1082,11 +1109,10 @@ added since are for features newer than the monolith — `stamp` (schema 8), `fo
 target, where there is nothing to pin. `goal-editor` and `budget` were written to pin
 the string versions before those were converted, so they run on both targets; only
 their footprint and committed-spend blocks are `[src]`-only. Against the monolith:
-510 pass, 227 skipped.
+510 pass, 255 skipped.
 
-One assertion fails on both targets. It is pre-existing, it predates all of this,
-and it is left failing rather than quietly adjusted: the install hint staying
-dismissed.
+The one assertion that used to fail on both targets — the install hint staying
+dismissed — was a real bug, not a test problem, and is fixed; see `FOLLOW-UPS.md` #4.
 
 | suite | assertions | covers |
 |---|---|---|
@@ -1111,7 +1137,8 @@ dismissed.
 | notes | 26 | `til:` capture filing a note rather than a goal, due the day after capture, SM-2 review with binary quality, delete, the ribbon signal and its resolver, and migration 10→11 |
 | cards | 33 | `parseCard()` reading Q/A and cloze markup, hidden-until-revealed rendering escaped either way, the Edit box's Hide, Show answer then grade, the temporary syntax tips, and `meta.tips` backfill |
 | harness | 3 | the harness boots either target and hands back the same API |
-| **total** | **737** (1 failing, see above) | |
+| google connect dialog | 28 | `[src]` only: the header button's four states and its title, the menu entry; the setup cards, their links opening safely in a new tab, the origin and **Copy** with and without a clipboard; the id field refusing a pasted secret and whitespace, warning on an odd id, and never re-rendering while typed in; paste → click → connected end to end, Enter to connect, a saved id skipping to one button, **Change** and **Back**, a different calendar resetting the cursor; a dismissed sign-in keeping the dialog, the id and a hint naming pop-ups, Test users and the origin; a hostile account name rendered as text; closing mid-connect still finishing; **Sync now**, arm-then-fire **Disconnect**, **Reconnect** after expiry; Settings' walkthrough link carrying a half-typed id across |
+| **total** | **765** | |
 
 One gap the suite found this pass, on the check-in's `nostep` and `blocked`
 cards — "actually it's blocked" and "unblocked — define next" set the inline row

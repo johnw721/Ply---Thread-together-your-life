@@ -12,6 +12,7 @@ import { SIGALL, SIGFIX, SIGOPEN, SIG_KIND, SIG_MAX, setSigAll, setSigFix, setSi
 import { renderSignals } from './components/ribbon.jsx';
 import { DOWS, HUSH_AT, MONEY_TARGET, MONTHS, RULES, activeItems, addSub, applyFootprint, autoNextTitle, avgDelta, buildGoalFrom, cadenceOf, carryFootprint, carrySubs, checkinAgenda, checkinDue, classify, clearGate, completeStep, daysQuiet, driftPhrase, firstStepFor, floatSub, followThrough, hushed, itemsOn, lastDowKey, learnType, learnedScore, money, moveItem, openGates, overdueItems, overlap, parseClock, parseMoney, parseWhen, quietLimit, shortName, sigKey, sigLabel, signals, snoozeSignals, sortSubs, streak, subProgress, subs, termsOf, togglePrereq, toggleSub, unblockThread, unscheduledItems } from './engine.js';
 import { DRIFT_CADENCE_TYPES, GOAL_GATE_FIELDS, LEARN_AFTER, TEMPLATES, TMPL_FIELDS, TMPL_GATE, acceptTmplGate, actualMins, applyTemplate, blankFootprint, catByName, catNameOf, clearActual, clearTmplGate, committedWeek, costTotal, declineTmplGate, duePrereqs, ensureFootprint, footLag, footLead, footWidth, fp, fpMeta, hasFootprint, matchTemplate, median, normCost, normFootprint, normPrereq, prereqById, prereqDueKey, proposeFromDrift, proposeFromDuration, queueTmplGate, recordSample, slotDur, startActual, stepCost, stepOfEvent, stopActual, timing, tmplAdd, tmplBuiltin, tmplEdited, tmplGates, tmplGet, tmplHide, tmplList, tmplReset, tmplSet, tmplShow } from './footprint.js';
+import { GC_LINKS, gcAct, gcCheckId, gcFace, gcHTML, gcHint, gcOpen, gcReadFields, gcReset, gcState, openGConnect, paintCalBtn } from './gcal-connect.js';
 import { GEROW, geAct, openConvert, openDefineNext, openEvent, openGoal, openPrefs, parseCostSpec, parsePrereqSpec, refreshGoal, saveGoalFields, setGerow, tmplPrefsHTML, toggleStep, uiAct } from './goal-editor.js';
 import { GDONE, GERR, GIS, GSTATE, GTIMER, GTOK, G_BACK_DAYS, G_FWD_DAYS, G_MAXPAGES, G_SCOPE, G_SYNCKEY, gAct, gAdopt, gApply, gCal, gCancel, gChips, gClientId, gConnect, gCursor, gCursorSet, gDead, gDisconnect, gDrop, gEnqueue, gFlush, gForeign, gFromRow, gISO, gLease, gLoadGIS, gMerge, gOn, gOriginOK, gPending, gPrefsHTML, gReadPrefs, gReadTime, gRequestToken, gStart, gStop, gSync, gToRow, gToken, gWinFrom, gWinTo, gapi, gmeta, gqueue, inWindow, setGErr } from './google.js';
 import { EASE_MIN, EASE_START, EASE_STEP, FIRST_INTERVAL, HINT_UNTIL, TIL_RE, TIPS, TIP_DAYS, addNote, blankSrs, cardHTML, cardLabel, deleteNote, dueNotes, isCard, isTilCapture, newNote, noteById, parseCard, pendingTips, retireTip, reviewNote, stripTil, tilQueue, tipsOff, toggleHide, updateNote, wantsSyntaxHint } from './notes.js';
@@ -157,6 +158,18 @@ export const API = {
   gAct,
   gPrefsHTML,
   gReadPrefs,
+  GC_LINKS,
+  gcAct,
+  gcCheckId,
+  gcFace,
+  gcHTML,
+  gcHint,
+  gcOpen,
+  gcReadFields,
+  gcReset,
+  gcState,
+  openGConnect,
+  paintCalBtn,
   BUDGET_COLOURS,
   budget,
   catColour,

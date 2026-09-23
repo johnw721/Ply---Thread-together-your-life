@@ -3,6 +3,7 @@ import { findStep } from '../checkin.js';
 import { openModal } from './modal.jsx';
 import { addSub } from '../engine.js';
 import { openPrefs, refreshGoal } from '../goal-editor.js';
+import { gcOpen, openGConnect } from '../gcal-connect.js';
 import { checkpoint, goalById, newStep, newThread, save, threadById, touchThread } from '../store.js';
 import { $, el, esc } from '../util.js';
 import { render } from '../views/render.jsx';
@@ -30,6 +31,7 @@ export function disarm(){ clearTimeout(ARMED_T); ARMED=null; }
 export function repaintArmed(){
   const m=$('.mbody[data-goal]');
   if(m){ refreshGoal(m.dataset.goal); return; }
+  if(gcOpen()){ openGConnect(); return; }   // the Google Calendar dialog's Disconnect
   if($('#pfMode')) openPrefs();        // the Settings panel: it owns two armed controls now
 }
 export const armLabel=(key,normal,armed)=> ARMED===key ? armed : normal;

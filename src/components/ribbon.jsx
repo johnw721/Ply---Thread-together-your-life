@@ -3,6 +3,7 @@ import { useEffect } from 'preact/hooks';
 import { signals, sigLabel } from '../engine.js';
 import { SEV_RANK } from '../engine.js';
 import { gChips } from '../google.js';
+import { paintCalBtn } from '../gcal-connect.js';
 import { $ } from '../util.js';
 import { signalsC, uiRev } from '../signals.js';
 import { FIXABLE, sigResolverHTML } from './resolver.js';
@@ -127,4 +128,7 @@ export function renderSignals(){
   const sig = signals();
   r.classList.toggle('empty', sig.length === 0 && !gChips().length);
   preactRender(<Ribbon />, r);
+  /* every provider state change already ends in renderSignals(), so the header's
+     calendar button is kept honest from here rather than from each call site */
+  paintCalBtn();
 }
