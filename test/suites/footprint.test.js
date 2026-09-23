@@ -445,16 +445,18 @@ d('committed spend against what was allocated [' + TARGET + ']', () => {
     expect(B.committed).toBe(400);
     expect(B.basis).toBe(400);
     expect(B.overCom).toBe(true);
-    expect(p.budgetBarHTML()).toMatch(/<u style="left:/);      // the budget line still crosses it
+    p.DB.meta.zoom = 'week'; p.render();
+    expect(h.$('#view .bbar u')).toBeTruthy();                 // the budget line still crosses it
   });
 
   it("draws committed as a solid part of the category's own block", () => {
     cats();
     const a = anchored(p, {dateKey: WS()});
     p.ensureFootprint(a.step).costs.push(p.normCost({label:'Meal', amount:50, catId:'c-food'}));
-    const html = p.budgetBarHTML();
-    expect(html).toMatch(/data-com="50"/);
-    expect(html).toMatch(/linear-gradient\(90deg,#[0-9a-f]+ 0 50%/i);   // 50 of the 100 allocated
+    p.DB.meta.zoom = 'week'; p.render();
+    const seg = h.$('#view .bbar i[data-cat="c-food"]');
+    expect(seg.dataset.com).toBe('50');
+    expect(seg.style.background).toMatch(/linear-gradient\(90deg, rgb\([^)]+\) 0 50%/);   // 50 of the 100 allocated
   });
 });
 
@@ -549,12 +551,14 @@ d('catProjection() nets committed spend out of the allocation [' + TARGET + ']',
     const pr = p.catProjection(cat);
     expect(pr.stalled).toBe(true);
     expect(pr.weeks).toBe(undefined);
-    expect(p.viewBudget()).toMatch(/nothing is reaching the goal this week/);
+    p.DB.meta.zoom = 'week'; p.render();
+    expect(h.$('#view .brow[data-cat="c-save"] .bnote').textContent).toMatch(/nothing is reaching the goal this week/);
   });
 
   it('the row says all three numbers rather than quietly presenting the result', () => {
     fund({committed: 45});
-    expect(p.viewBudget()).toMatch(/\$150\/wk allocated, \$45 committed, \$105 reaching the goal/);
+    p.DB.meta.zoom = 'week'; p.render();
+    expect(h.$('#view .brow[data-cat="c-save"] .bnote').textContent).toMatch(/\$150\/wk allocated, \$45 committed, \$105 reaching the goal/);
   });
 
   it("never reads a non-threshold goal's units as money", () => {

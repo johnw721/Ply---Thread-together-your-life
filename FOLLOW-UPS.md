@@ -33,25 +33,44 @@ The body text said "currently 5" while the code was at 6, then 7. It reads 7 now
 `Schema` in `src/schema.ts` is a union of the versions this build knows how to read, so
 the next drift is a compile error rather than a documentation one.
 
-## 3. The weekly budget panel is still built as a string
+## 3. The weekly budget panel was still built as a string — fixed
 
-Every view, the ribbon and the check-in are components. The budget panel under the Week
-grid is not: it is wrapped in one (`src/budget.jsx`) and still renders `viewBudget()`'s
-markup.
+`viewBudget()`, `budgetBarHTML()` and `budgetSummaryHTML()` are gone; the markup is
+`<BudgetPanel>` in `src/budget.jsx`. Same contract the check-in and the goal editor
+took: `wireView()` still routes input to `paintBudget()`, change to `commitBudget()` +
+`save()` and clicks to `budAct()`, and `commitBudget()` still reads the fields out of the
+DOM by class, so every selector survived.
 
-It is the one surface with live feedback while typing — `paintBudget()` repaints the bar
-and the percentages on every keystroke *without* writing to the DB, because the write
-happens on `change` so that one edit is one undo step. Converting that needs component
-state mirroring the inputs, and the money-budget suite (69 assertions in the original) was
-among those that could not be recovered. Converting it unguarded is the one thing this
-migration was set up not to do.
+The live repaint while typing is the part that needed care. `paintBudget()` no longer
+rewrites the bar's and the summary's `innerHTML`; it reads the fields into a `BUD_DRAFT`
+signal and the component redraws from that. The DB is still written only on change, so
+one edit is still one undo step. The draft keeps the fields' raw strings, so an emptied
+amount stays empty instead of being written back as `0` under the caret, and it records
+the saved budget it was typed over, so an undo, an add or a sync that changes the budget
+drops it and the panel shows the DB, as the string rebuild did. Projections and the Log
+button still follow what is saved, not what is being typed. `budgetState()` is now
+`budgetFigures()` applied to the DB, so the saved view and the typing view share one
+calculation.
 
-The wrapper is not a compromise on behaviour: Preact only touches the subtree when the
-html string changes, and `viewBudget()` reads the DB rather than the inputs, so the string
-is identical while someone is typing and the caret is never disturbed.
+**Coverage first:** `test/suites/budget.test.js`, which replaces the 69-assertion
+money-budget suite that could not be recovered. 59 assertions were green against the
+string version on `[src]` and 49 on the monolith (committed spend and one other are
+`[src]`-only) before any code changed. Deliberately breaking the string version showed
+they catch it: writing on every keystroke fails 8, rebuilding the fields fails 11, and
+rewriting an emptied amount to `0` fails 1. Four `footprint.test.js` assertions that
+matched `viewBudget()`/`budgetBarHTML()` output now read the rendered DOM.
 
-**To finish it:** write the budget suite first, against the string version, and get it
-green on both targets. Then convert.
+**Bug found and fixed:** tabbing between fields lost focus. The wrapper re-rendered after
+every `save()`, and because a committed edit changes the html string, the whole panel's
+`innerHTML` was replaced a tick later, destroying the field focus had just moved into.
+The monolith never re-rendered on that path, so this came in with the migration. A 60th
+assertion pins it: it fails on the string version, passes on the monolith and on the
+component. Checked in real Chromium as well: on the string build, Tab out of an edited
+amount left focus on `<body>`; after, it lands on the next control.
+
+Real-Chromium screenshots of the demo panel, saved and mid-typing, before vs after: same
+size, max per-pixel difference 42/255, from whitespace between text nodes; nothing
+rearranged.
 
 ## 4. Two PWA assertions fail, on both targets
 

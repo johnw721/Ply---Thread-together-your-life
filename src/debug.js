@@ -1,4 +1,4 @@
-import { BUDGET_COLOURS, budAct, budget, budgetBarHTML, budgetState, budgetSummaryHTML, catColour, catProjection, catSegStyle, commitBudget, committedThisWeek, dayBudget, fundableGoals, hrs, loadBar, loadState, logContribution, paintBudget, viewBudget } from './budget.js';
+import { BUDGET_COLOURS, budAct, budget, budgetState, catColour, catProjection, catSegStyle, commitBudget, committedThisWeek, dayBudget, fundableGoals, hrs, loadBar, loadState, logContribution, paintBudget } from './budget.js';
 import { CAL } from './cal.js';
 import { captureHint, doCapture } from './capture.js';
 import { CK, CKROW, CK_MAX, ckAct, ckBack, ckNext, ckSaveProgress, findStep, setCK, startCheckin, subjHead, suggestDay, suggestTime } from './checkin.js';
@@ -170,9 +170,6 @@ export const API = {
   paintBudget,
   commitBudget,
   budAct,
-  viewBudget,
-  budgetBarHTML,
-  budgetSummaryHTML,
   TYPE,
   PIPELINE_STAGES,
   RULES,

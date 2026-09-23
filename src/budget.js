@@ -1,8 +1,9 @@
+import { signal } from '@preact/signals';
 import { CAL } from './cal.js';
 import { committedWeek } from './footprint.js';
 import { completeStep, money, shortName } from './engine.js';
 import { DB, checkpoint, currentStep, goalById, liveGoals, save } from './store.js';
-import { $, $$, addDays, daysBetween, esc, fmtDateY, startOfWeek, toast, today, uid } from './util.js';
+import { $, $$, addDays, daysBetween, startOfWeek, toast, today, uid } from './util.js';
 import { render } from './views/render.jsx';
 
 /* ===================== [SECTION: BUDGET] =====================
@@ -22,12 +23,10 @@ export const catColour = i => BUDGET_COLOURS[i % BUDGET_COLOURS.length];
    already promised. */
 export const committedThisWeek = ()=> committedWeek(startOfWeek(today()));
 
-export function budgetState(){
-  const b=budget();
-  const cats=b.cats||[];
+/* The panel's arithmetic, from numbers rather than from the DB, so the same
+   figures serve both what is saved and what is being typed. */
+export function budgetFigures(weekly, cats, C){
   const allocated=cats.reduce((n,c)=>n+(+c.amount||0),0);
-  const weekly=+b.weekly||0;
-  const C=committedThisWeek();
   const committed=C.total;
   /* with no budget set, blocks show the relative split; with one, they show share
      of it — and committed joins the basis so that promising more than you
@@ -48,6 +47,10 @@ export function budgetState(){
     pct: c => basis>0 ? (+c.amount||0)/basis*100 : 0,
     share: c => weekly>0 ? (+c.amount||0)/weekly*100 : (allocated>0?(+c.amount||0)/allocated*100:0)
   };
+}
+export function budgetState(){
+  const b=budget();
+  return budgetFigures(+b.weekly||0, b.cats||[], committedThisWeek());
 }
 /* threshold goals are the only ones with a money target, so they're the only ones
    worth linking; everything else would just be a label */
@@ -121,8 +124,6 @@ export function loadBar(k,opts={}){
     <i style="width:${Math.min(100,L.pct)}%"></i></div>`;
 }
 
-/* --- export / import --- */
-
 /* A category's block is its allocation; the solid part of it is what is already
    committed. Drawn as a gradient rather than a nested element so that one block
    stays one element — the bar is laid out in percentages of a shared basis, and
@@ -132,141 +133,37 @@ export function catSegStyle(col, w, comFrac){
   const x=Math.round(Math.min(1,Math.max(0,comFrac))*1000)/10;
   return `width:${w}%;background:linear-gradient(90deg,${col} 0 ${x}%,${col}59 ${x}% 100%)`;
 }
-export function budgetBarHTML(){
-  const B=budgetState(), cats=budget().cats||[];
-  const segs=cats.map((c,i)=>{
-    const w=B.pct(c);
-    if(w<=0) return '';
-    const amt=+c.amount||0, com=B.com(c);
-    return `<i data-cat="${c.id}" data-com="${com}" style="${catSegStyle(catColour(i), w, amt?com/amt:0)}"
-       title="${esc(c.name)} — ${money(amt)}${com?' · '+money(com)+' committed':''}${
-         B.weekly>0?' · '+Math.round(B.share(c))+'% of the budget':''}"></i>`;
-  }).join('');
-  const restW = B.basis>0 ? Math.max(0,(B.basis-B.allocated)/B.basis*100) : 100;
-  /* committed money with no category still counts against the week, so it shows
-     in the unallocated remainder rather than vanishing into it */
-  const uncatW = B.basis>0 ? Math.min(restW, B.uncat/B.basis*100) : 0;
-  const rest = restW>0.01
-    ? (uncatW>0.01
-        ? `<i class="rest uncat" data-uncat="${B.uncat}" title="${money(B.uncat)} committed, no category"
-             style="width:${uncatW}%"></i><i class="rest" style="width:${restW-uncatW}%"></i>`
-        : `<i class="rest" style="width:${restW}%"></i>`)
-    : '';
-  // when allocation or commitment exceeds the budget, the bar scales to whichever
-  // is larger and the budget becomes a line across it — showing the overshoot
-  // rather than clipping it
-  const line = (B.over||B.overCom) ? `<u style="left:${B.weekly/B.basis*100}%"></u>` : '';
-  return `<div class="bbar ${(B.over||B.overCom)?'over':''}">${segs}${rest}${line}</div>`;
-}
-export function budgetSummaryHTML(){
-  const B=budgetState();
-  const com = B.committed
-    ? ` &middot; <span class="${B.overAlloc||B.overCom?'overtxt':''}">${money(B.committed)} committed</span>` : '';
-  if(B.unset) return `<span class="tiny muted">Set a weekly amount to see each category as a share of it.${
-    B.committed?' '+money(B.committed)+' is already committed this week.':''}</span>`;
-  return `<span class="tiny ${B.over||B.overCom?'overtxt':'muted'}">${money(B.allocated)} allocated of ${money(B.weekly)}
-    &middot; ${B.over?money(-B.left)+' over':money(B.left)+' unallocated'}${com}</span>`;
-}
-export function viewBudget(){
-  const b=budget(), B=budgetState(), cats=b.cats||[];
-  const fundable=fundableGoals();
+/* ---------- the panel's draft ----------
+   What the inputs hold between a keystroke and the change that commits it. Typing
+   updates this and nothing else — the bar, the summary and the percentages are drawn
+   from it, the DB is not touched — so one edit is still one undo step.
 
-  const rows = cats.map((c,i)=>{
-    const p=catProjection(c);
-    let note='';
-    const com=B.com(c);
-    // what the allocation actually buys once this week's commitments are taken out of it
-    const net = p && p.committed
-      ? `${money(+c.amount)}/wk allocated, ${money(p.committed)} committed, ${money(p.effective)} reaching the goal &middot; `
-      : `${money(+c.amount)}/wk `;
-    if(c.goalId && !p) note=`<span class="bnote warn">linked goal has no money target</span>`;
-    else if(p && p.done) note=`<span class="bnote good">target reached</span>`;
-    else if(p && p.stalled) note=`<span class="bnote overtxt">${money(+c.amount)}/wk allocated but
-        ${money(p.committed)} of it is already committed — nothing is reaching the goal this week</span>`;
-    else if(p && p.weeks) note=`<span class="bnote">${net}clears ${money(p.remaining)} in
-        ${p.weeks} week${p.weeks>1?'s':''} &middot; ${fmtDateY(p.date)}${
-        p.lateDays>0?` <span class="overtxt">${p.lateDays}d past the deadline</span>`:
-        p.lateDays!=null?' <span class="good">before the deadline</span>':''}</span>`;
-    else if(p && p.needed) note=`<span class="bnote">needs ${money(p.needed)}/wk to hit the deadline</span>`;
-    else if(p) note=`<span class="bnote">${money(p.remaining)} still to go</span>`;
-    else if(com) note=`<span class="bnote">${money(com)} committed this week</span>`;
+   Values are kept as the raw strings the fields hold. Normalising here ("" → 0)
+   would hand the component a value that differs from the DOM, and Preact would
+   write it back into the field under the caret.
 
-    return `<div class="brow" data-cat="${c.id}">
-      <span class="bsw" style="background:${catColour(i)}"></span>
-      <input class="bname" type="text" value="${esc(c.name)}" placeholder="Category" aria-label="Category name">
-      <div class="bamtwrap"><span>$</span><input class="bamt" type="number" min="0" step="1"
-        value="${+c.amount||0}" aria-label="Amount for ${esc(c.name)}"></div>
-      <span class="bpct" title="${com?money(com)+' committed':'nothing committed yet'}">${
-        B.weekly>0||B.allocated>0?Math.round(B.share(c))+'%':'—'}</span>
-      <select class="bgoal" aria-label="Link to a goal">
-        <option value="">— no goal —</option>
-        ${fundable.map(g=>`<option value="${g.id}" ${g.id===c.goalId?'selected':''}>${esc(shortName(g))}</option>`).join('')}
-      </select>
-      ${c.goalId&&p&&!p.done?`<button class="btn sm" data-bud="log" data-cat="${c.id}" title="Add this to the goal and close out its current contribution step">Log</button>`:''}
-      <button class="btn ghost sm bdel" data-bud="del" data-cat="${c.id}" title="Remove category">&times;</button>
-      ${note}
-    </div>`;
-  }).join('');
+   `base` is the saved budget the draft was typed over. When the saved budget moves
+   underneath it — an undo, an add, a sync — the draft is stale and the panel shows
+   the DB again, which is what the string version did by rebuilding. An unrelated
+   save leaves the budget alone, so it leaves the draft alone too. */
+export const BUD_DRAFT = signal(null);
+export const budSig = ()=> JSON.stringify(budget());
 
-  return `<div class="strip budget" style="margin-top:14px">
-    <div class="lbl">
-      <span>Weekly budget</span>
-      <span class="bsum">${budgetSummaryHTML()}</span>
-      <span class="spacer" style="flex:1"></span>
-      <span class="bwrap tiny">Budget <span>$</span><input class="bweekly" type="number" min="0" step="1"
-        value="${B.weekly||''}" placeholder="0" aria-label="Weekly budget"></span>
-    </div>
-    ${budgetBarHTML()}
-    <div class="brows">${rows||'<div class="tiny muted" style="padding:6px 2px">No categories yet.</div>'}</div>
-    <button class="btn sm" data-bud="add" style="margin-top:8px">+ Category</button>
-    ${cats.length&&fundable.length?'':`<div class="tiny muted" style="margin-top:8px">${
-      fundable.length?'':'Threshold-type goals (a money target) can be linked to a category once you have one.'}</div>`}
-  </div>`;
-}
-/* Live feedback while typing, without re-rendering the view out from under the caret.
-   Only the bar, the running total and the percentages change on input; the DB write
-   happens on change (blur), so one edit is one undo step. */
+/* Live feedback while typing: read the fields into the draft. The panel redraws
+   from it; nothing is rebuilt, so the field being typed into keeps its node. */
 export function paintBudget(){
   const v=$('#view'); if(!v) return;
   const wrap=$('.budget',v); if(!wrap) return;
-  const weekly=+($('.bweekly',wrap)||{}).value||0;
-  const live=$$('.brow',wrap).map(r=>({
-    id:r.dataset.cat,
-    name:$('.bname',r).value,
-    amount:+$('.bamt',r).value||0,
-    goalId:($('.bgoal',r)||{}).value||null
-  }));
-  const allocated=live.reduce((n,c)=>n+c.amount,0);
-  /* Committed spend is a fact about the calendar, not about what is being typed,
-     so it is read once here rather than recomputed per keystroke. */
-  const C=committedThisWeek(), committed=C.total;
-  const basis = weekly>0 ? Math.max(weekly,allocated,committed) : Math.max(allocated,committed);
-  const over = (weekly>0 && allocated>weekly) || (weekly>0 && committed>weekly);
-
-  const bar=$('.bbar',wrap);
-  bar.classList.toggle('over',over);
-  const restW = basis>0 ? Math.max(0,(basis-allocated)/basis*100) : 100;
-  const uncatW = basis>0 ? Math.min(restW, C.uncat/basis*100) : 0;
-  bar.innerHTML = live.map((c,i)=>{
-      if(c.amount<=0) return '';
-      const com=+(C.byCat[c.id]||0);
-      return `<i data-cat="${c.id}" data-com="${com}" style="${
-        catSegStyle(catColour(i), c.amount/basis*100, com/c.amount)}"></i>`;
-    }).join('')
-    + (uncatW>0.01?`<i class="rest uncat" data-uncat="${C.uncat}" style="width:${uncatW}%"></i>`:'')
-    + (restW-uncatW>0.01?`<i class="rest" style="width:${restW-uncatW}%"></i>`:'')
-    + (over?`<u style="left:${weekly/basis*100}%"></u>`:'');
-
-  const comTxt = committed ? ` &middot; ${money(committed)} committed` : '';
-  $('.bsum',wrap).innerHTML = weekly>0
-    ? `<span class="tiny ${over?'overtxt':'muted'}">${money(allocated)} allocated of ${money(weekly)}
-       &middot; ${allocated>weekly?money(allocated-weekly)+' over':money(weekly-allocated)+' unallocated'}${comTxt}</span>`
-    : `<span class="tiny muted">Set a weekly amount to see each category as a share of it.</span>`;
-
-  $$('.brow',wrap).forEach((r,i)=>{
-    const denom = weekly>0?weekly:allocated;
-    $('.bpct',r).textContent = denom>0 ? Math.round(live[i].amount/denom*100)+'%' : '—';
-  });
+  BUD_DRAFT.value = {
+    base: budSig(),
+    weekly: ($('.bweekly',wrap)||{}).value||'',
+    cats: $$('.brow',wrap).map(r=>({
+      id:r.dataset.cat,
+      name:$('.bname',r).value,
+      amount:$('.bamt',r).value,
+      goalId:($('.bgoal',r)||{}).value||null
+    }))
+  };
 }
 /* Fold the panel's DOM back into the DB. Deliberately does NOT save() — callers that
    also mutate (add/remove a category) must do their mutation first, or the save here

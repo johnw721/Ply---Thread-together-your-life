@@ -26,8 +26,7 @@ export const BRIDGE_VALUES = [
   'gStart','gStop','gChips','gAct','gPrefsHTML','gReadPrefs',
   // budget
   'BUDGET_COLOURS','budget','catColour','budgetState','fundableGoals','catProjection','logContribution',
-  'dayBudget','loadState','loadBar','paintBudget','commitBudget','budAct','viewBudget',
-  'budgetBarHTML','budgetSummaryHTML',
+  'dayBudget','loadState','loadBar','paintBudget','commitBudget','budAct',
   // classify
   'TYPE','PIPELINE_STAGES','RULES','MONTHS','DOWS','parseWhen','parseClock','parseMoney',
   'termsOf','overlap','learnType','learnedScore','classify',
