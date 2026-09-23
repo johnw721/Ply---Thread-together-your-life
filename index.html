@@ -125,6 +125,13 @@ header{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:
 .fixrow input,.fixrow select{width:auto;padding:5px 8px;font-size:12.5px}
 .fixrow .btn{flex:none}
 .sigfix .tiny{margin-top:6px}
+/* TIL cards: a blank is a dotted slot, a revealed answer is underlined in the accent */
+.tilcard{font-size:13px;line-height:1.5;color:var(--text)}
+.tilcard code{font-family:var(--mono);font-size:12px;padding:0 3px;border-radius:3px;background:rgba(255,255,255,.07)}
+.cloze.gap{display:inline-block;min-width:3.5em;text-align:center;border-bottom:1px dashed var(--accent-dim);color:var(--dim)}
+.cloze.shown{border-bottom:1px solid var(--accent-dim);color:var(--accent)}
+.cardback{margin-top:6px;padding-top:6px;border-top:1px dashed var(--accent-dim)}
+.sigfix textarea{resize:vertical}
 #btnUndo,#btnRedo{padding:5px 10px;font-size:15px;line-height:1}
 
 /* ---------- drag handle + ghost ---------- */

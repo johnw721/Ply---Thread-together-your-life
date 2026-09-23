@@ -2,7 +2,7 @@ import { TYPE } from './types.js';
 import { CAL } from './cal.js';
 import { buildGoalFrom, classify } from './engine.js';
 import { addGoal, checkpoint, currentStep, save } from './store.js';
-import { addNote, isTilCapture, stripTil } from './notes.js';
+import { addNote, cardLabel, isTilCapture, stripTil, wantsSyntaxHint } from './notes.js';
 import { $, toast } from './util.js';
 import { render } from './views/render.jsx';
 
@@ -14,7 +14,9 @@ export function doCapture(text){
   if(isTilCapture(text)){
     const n = addNote(stripTil(text));
     render();
-    toast(n ? 'Filed as a TIL — first review tomorrow.' : 'Nothing to file — that note was empty.');
+    const kind = n ? cardLabel(n.text) : '';
+    toast(n ? 'Filed as a TIL'+(kind?' card ('+kind+')':'')+' — first review tomorrow.'
+            : 'Nothing to file — that note was empty.');
     return;
   }
   const cls=classify(text);
@@ -38,7 +40,15 @@ export function doCapture(text){
 export function captureHint(text){
   const h=$('#captureHint');
   if(!text.trim()){h.textContent='';return;}
-  if(isTilCapture(text)){ h.innerHTML=`<span class="pill">TIL note</span>`; return; }
+  if(isTilCapture(text)){
+    /* Say what the markup will do before it's filed, and — until three notes use
+       it — what markup there is. The reminder retires itself; see notes.js. */
+    const kind=cardLabel(stripTil(text));
+    h.innerHTML=`<span class="pill">TIL ${kind?'card · '+kind:'note'}</span>`
+      +(!kind && wantsSyntaxHint()
+        ? ` <span class="tiny muted">&ldquo; :: &rdquo; splits Q/A · {braces} or \`code\` hides words</span>` : '');
+    return;
+  }
   const c=classify(text);
   const spec=TYPE[c.type];
   h.innerHTML=`<span class="pill" title="${c.learned?'matches a correction you made before':'from the phrasing'}">${

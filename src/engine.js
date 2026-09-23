@@ -6,7 +6,7 @@ import { actualMins, applyTemplate, blankFootprint, committedWeek, DRIFT_CADENCE
          ensureFootprint, fp, matchTemplate, normCost, normPrereq, proposeFromDuration, recordSample,
          slotDur, tmplGates, tmplGet } from './footprint.js';
 import { gDead } from './google.js';
-import { dueNotes } from './notes.js';
+import { dueNotes, pendingTips } from './notes.js';
 import { DB, checkpoint, currentStep, eventById, finishGoal, liveGoals, logIt, newGoal, newStep, newSub, newThread, pass, save, touchThread } from './store.js';
 import { churnAt, rescheduleHistory } from './reschedule.js';
 import { addDays, clamp, daysBetween, dkey, fmtDate, parseKey, startOfWeek, toast, today, uid } from './util.js';
@@ -603,10 +603,13 @@ export function _signals(){
      overbudget and tmpl above, since a note belongs to no goal. Deliberately
      'mute': a low-stakes nudge to revisit something you wrote down, not a
      thread that's stalled. */
-  const dueT = dueNotes(T);
-  if(dueT.length)
+  const dueT = dueNotes(T), tipsT = pendingTips(T);
+  if(dueT.length || tipsT.length)
     out.push({sev:'mute', kind:'til', goal:null, thread:null, ref:'til', days:0,
-      label:'Today I Learned', text:dueT.length+' note'+(dueT.length>1?'s':'')+' due for review'});
+      label:'Today I Learned', text:[
+        dueT.length ? dueT.length+' note'+(dueT.length>1?'s':'')+' due for review' : '',
+        tipsT.length ? tipsT.length+' tip'+(tipsT.length>1?'s':'')+' on card syntax' : ''
+      ].filter(Boolean).join(' · ')});
 
   // strongest first, then most overdue — minus anything explicitly snoozed
   const muted=new Set((DB.meta.snoozed||[]).filter(x=>x.until>today()).map(x=>x.k));

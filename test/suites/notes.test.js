@@ -6,7 +6,9 @@ import { boot, TARGET, isLegacy } from '../harness.js';
 const d = isLegacy ? describe.skip : describe;
 
 let h, p;
-beforeEach(async () => { h = await boot({ seed: false }); p = h.api; });
+/* The syntax tips (cards.test.js) queue ahead of due notes once any note exists;
+   this suite is about the notes themselves, so they're switched off here. */
+beforeEach(async () => { h = await boot({ seed: false }); p = h.api; p.DB.meta.tips.off = true; });
 
 d('capture — "til:" files a note, not a goal [' + TARGET + ']', () => {
   it('isTilCapture matches "til:" and "til " but not "till" or "tilth"', () => {

@@ -822,6 +822,43 @@ exists for the cross-device sync **Backend + cross-device sync** hasn't built ye
 Undo/redo and Export/Import already cover notes for free, since they operate on the
 whole `DB` object graph.
 
+### Cards: Q/A and cloze, no model involved
+
+A note can be a card by how it's written. The markup is the card — the note is still
+one raw string, parsed at review time — so editing can't drift from what gets asked,
+there is no schema bump, and Export/Import round-trips exactly as before.
+
+| Write | Review shows | Then reveals |
+|---|---|---|
+| `til: etcd's client port :: 2379` | the question | the answer, under a rule |
+| `til: kube-proxy runs on {every node}` | `kube-proxy runs on …` | the blank, underlined |
+| ``til: `kubectl drain` evicts pods first`` | a code-styled blank | the command |
+
+` :: ` needs a space on both sides, so `std::vector`, `Class::method` and `::1` stay
+plain text; a ` :: ` inside backticks is code, not a separator. `\{` and `` \` `` are
+literal. Every blank in a note hides at once and the note keeps one schedule —
+per-blank sibling cards (Anki's `c1`/`c2`) would each need their own `srs`, which is a
+new collection and a schema bump for a use case that is "quick capture, quick review".
+
+A card is two taps: **Show answer**, then Remembered / Forgot it. A plain note is
+still one, as in v1. The resolver now stays open on the next due item after a grade
+and closes itself when the queue is empty. The capture hint names what you're about to
+file (`TIL card · Q/A`, `TIL card · 2 blanks`), and so does the toast.
+
+**Edit** opens the note's raw text. Select words and tap **Hide** to wrap them in
+braces; a caret alone takes the word under it, and Hide on an existing blank takes it
+back out. Saving keeps the schedule — making a card out of a note captured plain is
+the case this exists for, and resetting it to day one would punish the tidy-up.
+
+**Tips (temporary).** Once your first note exists, up to four tip cards queue ahead
+of due notes, each one a working example of the syntax it explains. They are not
+notes — they live in code, never in `DB.notes`, never export and never get a
+schedule. They go away three ways: **Got it** retires one, **No more tips** retires
+all, and they stop by themselves 14 days after your first capture. Only
+`meta.tips` (`{seen, off, since}`) persists, backfilled and coerced by `migrate()`.
+The capture bar's one-line syntax reminder retires separately, once three of your
+notes use the markup.
+
 ## Legibility, touch and focus
 
 Three things were measured rather than eyeballed, and all three came back worse than

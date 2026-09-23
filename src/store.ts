@@ -156,7 +156,10 @@ export function blankDB(): Database {
       notify:false,         // the user's answer, separate from the browser's permission
       notifSent:[],         // [{k,ts}] — what has already fired, so a reload doesn't repeat it
       sigHardSince:{},      // {signalKey: iso} — when each hard signal first turned hard
-      installHidden:false   // the install hint was dismissed; don't bring it back
+      installHidden:false,  // the install hint was dismissed; don't bring it back
+      /* the temporary TIL syntax tips — see [SECTION: TIPS] in src/notes.js. No
+         schema bump, same as notify above: an older file arrives with none seen. */
+      tips:{ seen:[], off:false, since:null }
     }
   };
 }
@@ -371,6 +374,13 @@ export function migrate(d: any): MigrateResult {
         }
       };
     });
+
+  const tp0 = (d.meta.tips && typeof d.meta.tips==='object') ? d.meta.tips : {};
+  d.meta.tips = {
+    seen:(Array.isArray(tp0.seen)?tp0.seen:[]).filter(x=>typeof x==='string'),
+    off:!!tp0.off,
+    since:validDay(tp0.since)?tp0.since:null
+  };
 
   // shapes that must hold whatever the file claimed
   d.meta.budget = d.meta.budget || {weekly:0, cats:[]};

@@ -311,6 +311,9 @@ export interface Meta {
   notifSent: { k: string; ts: Stamp }[];
   sigHardSince: Record<string, Stamp>;
   installHidden: boolean;
+  /** the temporary TIL syntax tips (src/notes.js [SECTION: TIPS]): ids retired,
+      all switched off, and the day the 14-day clock started */
+  tips: { seen: string[]; off: boolean; since: DateKey | null };
   footprint: FootprintMeta;
 }
 

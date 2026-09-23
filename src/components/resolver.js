@@ -8,14 +8,25 @@ import { applyFootprint, autoNextTitle, clearGate, firstStepFor, learnType, mone
          sigLabel, signals, togglePrereq, unblockThread } from '../engine.js';
 import { acceptTmplGate, costTotal, declineTmplGate, fp, tmplGet } from '../footprint.js';
 import { openGoal } from '../goal-editor.js';
-import { deleteNote, dueNotes, reviewNote } from '../notes.js';
+import { cardHTML, deleteNote, parseCard, retireTip, reviewNote, tilQueue, tipsOff, toggleHide,
+         updateNote } from '../notes.js';
 import { checkpoint, currentStep, deleteGoal, logIt, newStep, save, touchThread } from '../store.js';
 import { $, addDays, esc, toast, today, uid } from '../util.js';
 import { QUAD, render } from '../views/render.jsx';
+import { bumpUi } from '../signals.js';
 
 /* `quiet`, `deadline` and `overbudget` stay unfixable on purpose: all three are
    judgment calls rather than data gaps. Nothing here can decide for you that this
    week's dinners are worth it. */
+/* Review-local UI state, not DB: which item has its answer showing and which
+   note is open for editing. Keyed by item id, so moving on to the next item
+   resets both without anyone having to remember to. Set only through these —
+   the ribbon is a signals component and skips a redraw nothing told it about
+   (see uiRev in src/signals.js), so a bare assignment repaints nothing. */
+export let TIL_REVEAL=null, TIL_EDIT=null;
+export function setTilReveal(v){ TIL_REVEAL=v; bumpUi(); }
+export function setTilEdit(v){ TIL_EDIT=v; bumpUi(); }
+
 export const FIXABLE=new Set(['gate','nostep','unscheduled','slipped','branch','blocked','hushed','prereq','tmpl','reschedule','til']);
 
 export function sigResolverHTML(s){
@@ -134,27 +145,78 @@ export function sigResolverHTML(s){
       <button class="btn primary sm" data-fix="revive">Revive</button></div>`;
   }
   else if(s.kind==='til'){
-    /* Dumb resurfacing: the note exactly as written, no generated question — see
-       src/notes.js. Always the oldest due one; reviewing it drops its own dueAt
-       out of the "due" set, so a chip with several behind it just means opening
-       it again after each one — same as every other multi-item signal here. */
-    const n=dueNotes()[0];
-    body = n
-      ? `<div class="fixrow" style="align-items:flex-start">
-           <span class="tiny" style="flex:1;min-width:0;white-space:pre-wrap">${esc(n.text)}</span></div>
-         <div class="fixrow">
-           <button class="btn sm" data-fix="til-delete">Not useful</button>
-           <span class="spacer" style="flex:1"></span>
-           <button class="btn sm" data-fix="til-forgot">Forgot it</button>
-           <button class="btn primary sm" data-fix="til-remembered">Remembered</button></div>`
-      : `<div class="fixrow"><span class="tiny muted">Nothing left to review.</span></div>`;
+    /* Oldest first, tips ahead of notes (see tilQueue in src/notes.js). A card is
+       two taps — Show answer, then grade — and a plain note stays one, exactly as
+       v1 had it: there is nothing to reveal, so there's nothing to wait for. */
+    const it=tilQueue()[0];
+    body = !it ? `<div class="fixrow"><span class="tiny muted">Nothing left to review.</span></div>`
+         : it.tip ? tipHTML(it)
+         : TIL_EDIT===it.id ? tilEditHTML(it.note)
+         : tilCardHTML(it);
   }
   return `<div class="sigfix" data-key="${esc(s.key)}">${head}${body}</div>`;
+}
+
+function tilCardHTML(it){
+  const card=parseCard(it.text).kind!=='plain', open=!card||TIL_REVEAL===it.id;
+  return `<div class="fixrow" style="align-items:flex-start">
+      <span class="tiny tilcard" style="flex:1;min-width:0;white-space:pre-wrap">${cardHTML(it.text, open)}</span></div>
+    <div class="fixrow">
+      <button class="btn sm" data-fix="til-delete">Not useful</button>
+      <button class="btn ghost sm" data-fix="til-edit">Edit</button>
+      <span class="spacer" style="flex:1"></span>
+      ${open
+        ? `<button class="btn sm" data-fix="til-forgot">Forgot it</button>
+           <button class="btn primary sm" data-fix="til-remembered">Remembered</button>`
+        : `<button class="btn primary sm" data-fix="til-reveal">Show answer</button>`}</div>`;
+}
+function tilEditHTML(n){
+  return `<div class="fixrow">
+      <textarea id="fxNote" rows="3" style="flex:1;min-width:0;font-size:12.5px">${esc(n.text)}</textarea></div>
+    <div class="fixrow">
+      <button class="btn ghost sm" data-fix="til-edit-cancel">Cancel</button>
+      <button class="btn sm" data-fix="til-hide" title="Blank out the selected words, or bring a blank back">Hide</button>
+      <span class="spacer" style="flex:1"></span>
+      <button class="btn primary sm" data-fix="til-save">Save</button></div>
+    <div class="tiny muted">Select words and tap Hide to blank them (tap again to undo). &ldquo; :: &rdquo; splits a question from its answer. The schedule is kept.</div>`;
+}
+/* A tip is itself a working card: the demo goes through the same renderer and
+   the same Show answer as a real note, so the thing it teaches is on screen. */
+function tipHTML(it){
+  const demo=!!it.text, open=!demo||TIL_REVEAL===it.id;
+  return `<div class="fixrow"><span class="tiny"><span class="pill">Tip</span> ${esc(it.tip.say)}</span></div>
+    ${demo?`<div class="fixrow" style="align-items:flex-start">
+      <span class="tiny tilcard" style="flex:1;min-width:0;white-space:pre-wrap">${cardHTML(it.text, open)}</span></div>`:''}
+    <div class="fixrow">
+      <button class="btn ghost sm" data-fix="tip-off">No more tips</button>
+      <span class="spacer" style="flex:1"></span>
+      ${open
+        ? `<button class="btn primary sm" data-fix="tip-got">Got it</button>`
+        : `<button class="btn primary sm" data-fix="til-reveal">Show answer</button>`}</div>`;
+}
+
+/* Review-surface moves that change nothing stored: no checkpoint, no undo step,
+   just a repaint. Returns true when it handled the act. */
+function tilUiAct(act){
+  const it=tilQueue()[0];
+  if(act==='til-reveal'){ if(it) setTilReveal(it.id); renderSignals(); return true; }
+  if(act==='til-edit'){ if(it&&it.note) setTilEdit(it.id); renderSignals();
+    const ta=$('#fxNote'); if(ta){ ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+    return true; }
+  if(act==='til-edit-cancel'){ setTilEdit(null); renderSignals(); return true; }
+  if(act==='til-hide'){
+    const ta=$('#fxNote'); if(!ta) return true;
+    const r=toggleHide(ta.value, ta.selectionStart, ta.selectionEnd);
+    if(!r.ok){ toast('Select words on one line, outside any other blank.'); return true; }
+    ta.value=r.text; ta.focus(); ta.setSelectionRange(r.start, r.end);
+    return true; }
+  return false;
 }
 
 export function sigFixAct(act,btn){
   const s=signals().find(x=>x.key===SIGFIX);
   if(act==='cancel'||!s){ setSigFix(null); renderSignals(); return; }
+  if(s.kind==='til' && tilUiAct(act)) return;
   const g=s.goal, t=s.thread;
   if(act==='open'){ setSigFix(null); openGoal(g.id); return; }
   checkpoint('that fix');
@@ -235,12 +297,34 @@ export function sigFixAct(act,btn){
       unblockThread(g,t); break;
     case 'revive':
       touchThread(t); break;                          // movement is what un-hushes it
-    case 'til-remembered':{
-      const n=dueNotes()[0]; if(n) reviewNote(n, true); break; }
-    case 'til-forgot':{
-      const n=dueNotes()[0]; if(n) reviewNote(n, false); break; }
-    case 'til-delete':{
-      const n=dueNotes()[0]; if(n) deleteNote(n.id); break; }
+    /* The til acts keep the resolver open on purpose: with more due behind this
+       one, closing it after each grade was a click per note for nothing. It
+       closes itself once the queue is empty. */
+    case 'til-remembered': case 'til-forgot': case 'til-delete':
+    case 'til-save': case 'tip-got': case 'tip-off':{
+      const it=tilQueue()[0];
+      if(act==='til-save'){
+        const v=($('#fxNote')||{value:''}).value;
+        if(!v.trim()){ toast('Empty — use Not useful to delete it.'); return; }
+        if(it&&it.note) updateNote(it.note.id, v);
+        setTilEdit(null);
+      }
+      else if(act==='tip-got'){ if(it&&it.tip) retireTip(it.tip.id); }
+      else if(act==='tip-off') tipsOff();
+      else if(it&&it.note){
+        if(act==='til-delete') deleteNote(it.note.id);
+        else reviewNote(it.note, act==='til-remembered');
+      }
+      setTilReveal(null);
+      if(!tilQueue().length) setSigFix(null);
+      save(); render();
+      toast(act==='til-remembered'?'Remembered — scheduled ahead.'
+        :act==='til-forgot'?'Forgot — back tomorrow.'
+        :act==='til-delete'?'Deleted — ⌘Z to undo.'
+        :act==='til-save'?'Saved — schedule kept.'
+        :act==='tip-off'?'No more tips.'
+        :'Tip retired.');
+      return; }
     case 'drop':
       // nothing else is open, so this one can afford a real dialog
       setSigFix(null); renderSignals();
@@ -251,9 +335,6 @@ export function sigFixAct(act,btn){
   }
   setSigFix(null); save(); render();
   toast(act==='revive'?'Back in rotation.':act==='drop'?'Dropped.'
-    :act==='til-remembered'?'Remembered — scheduled ahead.'
-    :act==='til-forgot'?'Forgot — back tomorrow.'
-    :act==='til-delete'?'Deleted — ⌘Z to undo.'
     :'Done — no check-in needed.');
 }
 
