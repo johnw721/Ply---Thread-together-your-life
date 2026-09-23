@@ -61,14 +61,31 @@ against `src/`, so they predate this migration and are not caused by it. They ar
 failing rather than skipped or adjusted, because a suite that goes green by being edited
 is worth nothing.
 
-## 5. The goal editor is still built as a string
+## 5. The goal editor was still built as a string — fixed
 
-`goalEditorHTML()` and its `geAct()` router are unconverted. Nothing forces the issue —
-the editor rebuilds itself through `refreshGoal()` and the renames commit on blur
-deliberately so the modal is never rebuilt under the caret — but it is the largest
-remaining string surface, and it is where the inline-add fields and arm-to-confirm live.
-The dialogs suite covers those flows, so unlike the budget panel this one could be
-converted now.
+`goalEditorHTML()` and its row builders (`schedRowHTML`, `footRowHTML`, `subListHTML`,
+`ordControls`) are gone; the markup is `<GoalEditor>` in `src/goal-editor.jsx`. Same
+contract the check-in took: `geAct()` and `saveGoalFields()` are unchanged and still read
+values out of the DOM by class and id, so every selector survived.
+
+The dialogs suite covered the inline-add fields and arm-to-confirm, but not the footprint
+row, reordering, rename-in-place, the SMART fields, the type-change gate, finish/convert,
+unblock/fire or pipeline entries. `test/suites/goal-editor.test.js` pinned all of those
+first, green against the monolith (37, footprint block skipped as it postdates it) and the
+string version (44), before anything changed.
+
+What's different: `refreshGoal()` re-renders instead of rewriting `innerHTML`, so the
+focused field keeps its node and its focus. Two `[src]`-only assertions pin that — the
+monolith can't pass them. Every field is still given its value explicitly, including the
+empty ones, so a refresh resets typed-but-unsaved text exactly as the rebuild did; the
+editor reads no signals, so it redraws only when `refreshGoal()` says so, never on a
+`render()` of the views behind it.
+
+The five string builders were dropped from `test/bridge.js` and `src/debug.js` — no suite
+called them. `debug.js` was edited by hand rather than regenerated: `gen-debug` would drop
+the TIL-notes exports (`parseCard`, `cardHTML`, `TIL_EDIT`, ...), which `c1b7d1f` added to
+`debug.js` but never listed in `bridge.js`. Worth fixing at the source: add those names to
+`BRIDGE_VALUES`/`BRIDGE_ACCESSORS` so the generator stops being a trap.
 
 ## 6. Deliberate deferrals from Prompt 4 (footprints)
 

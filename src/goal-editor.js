@@ -1,19 +1,18 @@
-import { PIPELINE_STAGES, TYPE } from './types.js';
-import { bestQuadrant } from './views/quarter.js';
+import { TYPE } from './types.js';
+
 import { dayBudget, hrs, loadState } from './budget.js';
 import { CAL } from './cal.js';
-import { ckAct, findStep, setCK, subjHead, suggestDay, suggestTime } from './checkin.js';
-import { ARMED, armConfirm, armLabel, disarm, newInAct, newInHTML, takeConfirmCb } from './components/dialogs.js';
+import { ckAct, findStep, setCK, subjHead } from './checkin.js';
+import { ARMED, armConfirm, armLabel, disarm, newInAct, takeConfirmCb } from './components/dialogs.js';
 import { closeModal, openModal } from './components/modal.jsx';
-import { DOWS, buildGoalFrom, cadenceOf, classify, completeStep, daysQuiet, followThrough, learnType, money, moveItem, shortName, streak, subProgress, subs, toggleSub, togglePrereq, unblockThread } from './engine.js';
-import { TEMPLATES, applyTemplate, clearActual, costTotal, ensureFootprint, fp, fpMeta, hasFootprint,
-         normCost, normPrereq, startActual, stopActual, timing, tmplAdd, tmplBuiltin, tmplEdited,
-         tmplGet, tmplHide, tmplList, tmplReset, tmplSet, tmplShow } from './footprint.js';
+import { DOWS, buildGoalFrom, classify, completeStep, learnType, money, moveItem, shortName, subs, toggleSub, togglePrereq, unblockThread } from './engine.js';
+import { TEMPLATES, applyTemplate, clearActual, costTotal, ensureFootprint, fpMeta, normCost, normPrereq, startActual, stopActual, timing, tmplAdd, tmplBuiltin, tmplEdited, tmplGet, tmplHide, tmplList, tmplReset, tmplSet, tmplShow } from './footprint.js';
 import { gConnect, gDead, gDisconnect, gFlush, gForeign, gPrefsHTML, gReadPrefs, gSync, setGErr } from './google.js';
 import { installPrefsHTML, notifDisable, notifEnable, notifPrefsHTML, notifWanted } from './notify.js';
 import { doInstall, renderInstallBar } from './pwa.js';
 import { DB, MEMONLY, addEvent, addGoal, checkpoint, currentStep, deleteGoal, eventById, finishGoal, goalById, logIt, masterEvent, newEvent, newStep, newThread, removeEvent, save, skipOccurrence, threadById, touchThread } from './store.js';
-import { $, $$, dkey, el, esc, fmtDate, fmtFull, fmtTime, toast, today, uid } from './util.js';
+import { $, $$, el, esc, fmtDate, fmtFull, fmtTime, toast, today, uid } from './util.js';
+import { renderGoalEditor } from './goal-editor.jsx';
 import { QUAD, render } from './views/render.jsx';
 import { noteReschedule } from './reschedule.js';
 
@@ -127,262 +126,18 @@ export function openConvert(g){
       <button class="btn primary" data-ui="cv-save" data-id="${g.id}">Create goal</button></div>`);
 }
 
-/* ---------------- goal editor ---------------- */
-export function openGoal(id){ openModal(goalEditorHTML(id),{wide:true,nofocus:true}); }
-export function refreshGoal(id){ const m=$('.modal'); if(m) m.innerHTML=goalEditorHTML(id); }
+/* ---------------- goal editor ----------------
+   The markup is goal-editor.jsx; the actions below still read it out of the DOM. */
+export function openGoal(id){ renderGoalEditor(id); }
+/* Re-render in place. Preact patches the open dialog rather than replacing it,
+   so whatever had focus keeps it. If some other dialog is up instead — a stale
+   call after the editor was swapped out — the old innerHTML rewrite would have
+   turned that dialog into the editor; opening the editor does the same thing. */
+export function refreshGoal(id){ if($('.modal')) renderGoalEditor(id); }
 
-/* up/down beat drag here: the list is short, and arrows work with a keyboard and on
-   a phone, where the quadrant drag already had to grow a dedicated grip */
-export function ordControls(upAct,downAct,i,len,extra){
-  return `<button class="btn sm ghost ord" data-ge="${upAct}" data-i="${i}" ${extra} ${i===0?'disabled':''}
-      title="Move up" aria-label="Move up">&#9650;</button>
-    <button class="btn sm ghost ord" data-ge="${downAct}" data-i="${i}" ${extra} ${i===len-1?'disabled':''}
-      title="Move down" aria-label="Move down">&#9660;</button>`;
-}
 /* which inline row the goal editor currently has open — one at a time */
 export let GEROW=null;
 export function setGerow(v){ GEROW=v; }
-
-export function schedRowHTML(g,t,s,ev){
-  const d = ev?ev.dateKey:suggestDay({goal:g,quadrant:s.quadrant},45);
-  const tm = ev&&!ev.allDay ? String(Math.floor(ev.start/60)).padStart(2,'0')+':'+String(ev.start%60).padStart(2,'0')
-                            : suggestTime({goal:g,quadrant:s.quadrant});
-  const L=loadState(d);
-  return `<div class="stepline addrow">
-    <input type="date" class="schd" value="${d}" aria-label="Date">
-    <input type="time" class="schtm" value="${tm}" ${ev&&ev.allDay?'disabled':''} aria-label="Time">
-    <label class="tiny muted" style="display:flex;gap:4px;align-items:center">
-      <input type="checkbox" class="schall" ${ev&&ev.allDay?'checked':''} style="width:auto">all day</label>
-    <span class="tiny muted schload">${L.over?`<span class="overtxt">${hrs(L.mins)} booked</span>`:hrs(L.free)+' free'}</span>
-    <button class="btn sm" data-ge="sched-cancel">cancel</button>
-    <button class="btn sm primary" data-ge="sched-save" data-t="${t.id}" data-s="${s.id}">${ev?'reslot':'schedule'}</button>
-  </div>`;
-}
-
-/* ---------- the footprint editor ----------
-   Everything a step really costs, in one row under it: the minutes either side,
-   the things that have to happen first, and the money. Opened from the step, not
-   from Settings, because a footprint belongs to the doing rather than to the
-   library it may have come from. */
-export function footRowHTML(g,t,s){
-  const f=fp(s), cats=(DB.meta.budget&&DB.meta.budget.cats)||[];
-  const tmpls=tmplList();
-  const mins=s.actual&&s.actual.mins;
-  const catOpts = id => `<option value="">— no category —</option>`+cats.map(c=>
-    `<option value="${c.id}" ${c.id===id?'selected':''}>${esc(c.name)}</option>`).join('');
-
-  return `<div class="footrow" data-s="${s.id}">
-    <div class="stepline addrow">
-      <span class="tiny muted">before</span>
-      <input class="fplead" type="number" min="0" step="5" value="${f.lead}" style="width:70px" aria-label="Lead minutes">
-      <span class="tiny muted">min &middot; after</span>
-      <input class="fplag" type="number" min="0" step="5" value="${f.lag}" style="width:70px" aria-label="Lag minutes">
-      <span class="tiny muted">min</span>
-      <span class="spacer" style="flex:1"></span>
-      <select class="fptmpl" aria-label="Template">${tmpls.map(x=>
-        `<option value="${x.key}" ${x.key===f.tmpl?'selected':''}>${esc(x.label)}</option>`).join('')}</select>
-      <button class="btn sm" data-ge="foot-apply" data-s="${s.id}" data-t="${t.id}"
-        title="Fills gaps only — anything you have set stays">apply</button>
-    </div>
-
-    <div class="sublist">
-      ${f.prereqs.map(p=>`<div class="subline ${p.done?'done':''}">
-        <span class="subchk ${p.done?'on':''}" data-ge="foot-pq-toggle" data-s="${s.id}" data-t="${t.id}" data-pq="${p.id}"
-          role="checkbox" aria-checked="${p.done}" tabindex="0">${p.done?'&#10003;':''}</span>
-        <input class="edit fppqt" data-pq="${p.id}" value="${esc(p.title)}" aria-label="Prerequisite">
-        <input class="fppqd" type="number" min="0" data-pq="${p.id}" value="${p.leadDays}" style="width:58px"
-          aria-label="Days before"><span class="tiny muted">d before</span>
-        <button class="btn sm ghost" data-ge="foot-pq-del" data-s="${s.id}" data-t="${t.id}" data-pq="${p.id}">&times;</button>
-      </div>`).join('')}
-      <div class="addrow">
-        <input class="fppqnew" placeholder="+ has to happen first" aria-label="New prerequisite">
-        <button class="btn sm" data-ge="foot-pq-add" data-s="${s.id}" data-t="${t.id}">add</button>
-      </div>
-      <div class="subfoot"><span class="tiny muted">A prerequisite never gets a slot and never reaches the
-        matrix &mdash; it raises a signal inside its window instead.</span></div>
-    </div>
-
-    <div class="sublist">
-      ${f.costs.map(c=>`<div class="subline">
-        <input class="edit fpcl" data-c="${c.id}" value="${esc(c.label)}" aria-label="Cost label">
-        <span class="tiny muted">$</span>
-        <input class="fpca" type="number" min="0" step="1" data-c="${c.id}" value="${c.amount}" style="width:80px"
-          aria-label="Amount">
-        <select class="fpcc" data-c="${c.id}" aria-label="Category">${catOpts(c.catId)}</select>
-        <button class="btn sm ghost" data-ge="foot-cost-del" data-s="${s.id}" data-t="${t.id}" data-c="${c.id}">&times;</button>
-      </div>`).join('')}
-      <div class="addrow">
-        <input class="fpcnew" placeholder="+ what it costs" aria-label="New cost line">
-        <button class="btn sm" data-ge="foot-cost-add" data-s="${s.id}" data-t="${t.id}">add</button>
-      </div>
-      <div class="subfoot"><span class="tiny muted">${f.costs.length
-        ? 'Estimated at '+money(costTotal(f.costs))+' — committed against the week it is scheduled in.'
-        : 'Estimates only. Ply has never tracked what was actually spent.'}</span></div>
-    </div>
-
-    <div class="stepline addrow">
-      ${ timing(s)
-        ? `<span class="tiny">timing now&hellip;</span>
-           <button class="btn sm primary" data-ge="foot-stop" data-s="${s.id}" data-t="${t.id}">stop</button>`
-        : mins
-          ? `<span class="tiny muted">took ${mins} min</span>
-             <button class="btn sm ghost" data-ge="foot-clear" data-s="${s.id}" data-t="${t.id}">clear</button>`
-          : `<button class="btn sm" data-ge="foot-start" data-s="${s.id}" data-t="${t.id}">start timing</button>
-             <span class="tiny muted">optional &mdash; skipping it changes nothing</span>` }
-      <span class="spacer" style="flex:1"></span>
-      <button class="btn sm" data-ge="foot-cancel">close</button>
-      <button class="btn sm primary" data-ge="foot-save" data-s="${s.id}" data-t="${t.id}">save</button>
-    </div>
-  </div>`;
-}
-
-export function subListHTML(g,t,s){
-  const list=subs(s), p=subProgress(s);
-  return `<div class="sublist" data-s="${s.id}">
-    ${list.map((x,i)=>`<div class="subline ${x.done?'done':''}">
-      <span class="subchk ${x.done?'on':''}" data-ge="sub-toggle" data-t="${t.id}" data-s="${s.id}" data-sub="${x.id}"
-        role="checkbox" aria-checked="${x.done}" tabindex="0">${x.done?'&#10003;':''}</span>
-      <input class="edit subtitle" data-s="${s.id}" data-sub="${x.id}" value="${esc(x.title)}" aria-label="Subtask">
-      ${ordControls('sub-up','sub-down',i,list.length,`data-s="${s.id}"`)}
-      <button class="btn sm ghost" data-ge="sub-del" data-s="${s.id}" data-sub="${x.id}" aria-label="Delete subtask">&times;</button>
-    </div>`).join('')}
-    <div class="addrow">${newInHTML('sub','+ subtask', `data-s="${s.id}"`)}</div>
-    <div class="subfoot">
-      ${p.any?`<span class="tiny muted">${p.done}/${p.total} done${p.done===p.total?' — ticking the last one closes the step':''}</span>`
-             :`<span class="tiny muted">Break this step down if it needs it. Ticking them all completes the step.</span>`}
-    </div></div>`;
-}
-
-export function goalEditorHTML(id){
-  const g=goalById(id); if(!g) return '<h3>Gone<button class="btn ghost x" data-close>&times;</button></h3>';
-  const spec=TYPE[g.type], ft=followThrough(g.id);
-  const typeSel=Object.keys(TYPE).map(t=>`<option value="${t}" ${t===g.type?'selected':''}>${TYPE[t].label}</option>`).join('');
-
-  const threads=g.threads.map(t=>{
-    const cur=currentStep(t), hist=t.steps.filter(s=>s.done).slice(-4);
-    const ev=cur&&cur.eventId?eventById(cur.eventId):null;
-    return `<div class="thread ${t.status}" data-thread="${t.id}">
-      <div class="th">
-        <input type="text" class="tname" value="${esc(t.name)}" style="width:auto;flex:1;background:transparent;border-color:transparent;font-weight:600">
-        <select class="trel" style="width:auto;flex:none">${['sequential','parallel','conditional','blocked','cyclical'].map(r=>
-          `<option value="${r}" ${r===t.rel?'selected':''}>${r}</option>`).join('')}</select>
-        <button class="btn sm ghost ${ARMED==='thread-del:'+t.id?'danger':''}" data-ge="thread-del" data-t="${t.id}"
-          >${armLabel('thread-del:'+t.id,'&times;','remove thread?')}</button>
-      </div>
-      ${ t.status==='blocked' ? `<div class="tiny" style="color:var(--warn);margin-bottom:6px">Waiting on
-          <input type="text" class="tblock" value="${esc(t.blockedOn)}" style="width:auto;display:inline-block;padding:2px 6px">
-          since ${t.blockedSince?fmtDate(dkey(new Date(t.blockedSince))):'?'} &nbsp;
-          <button class="btn sm" data-ge="unblock" data-t="${t.id}">Unblock</button></div>` : '' }
-      ${ t.status==='dormant' ? `<div class="tiny muted" style="margin-bottom:6px">Dormant until: ${esc(g.trigger||'trigger undefined')}
-          <button class="btn sm" data-ge="fire" data-t="${t.id}">Trigger fired</button></div>`:'' }
-      ${ t.rel==='conditional' ? `<div class="tiny muted" style="margin-bottom:6px">Branches
-          ${t.branches.map((b,i)=>`<div class="stepline"><span class="muted">if</span> ${esc(b.condition)}
-             <span class="muted">&rarr;</span> ${esc(b.next)}
-             <button class="btn sm ghost" data-ge="branch-del" data-t="${t.id}" data-i="${i}">&times;</button></div>`).join('')}
-          <div class="stepline addrow"><span class="muted">if</span>
-            <input class="brif" data-t="${t.id}" placeholder="it goes this way" aria-label="Branch condition">
-            <span class="muted">&rarr;</span>
-            <input class="brthen" data-t="${t.id}" placeholder="then this is the next step" aria-label="Branch next step">
-            <button class="btn sm" data-ge="branch-add" data-t="${t.id}">add</button></div></div>`:'' }
-      <div class="steplist">
-        ${hist.map(s=>`<div class="stepline hist"><span class="st">${s.doneAt?fmtDate(dkey(new Date(s.doneAt))):''}</span>
-           &#10003; ${esc(s.title)}${s.outcome?` <span class="muted">(${esc(s.outcome)})</span>`:''}</div>`).join('')}
-        ${ cur ? `<div class="stepline cur">
-             <span class="dot" style="background:${QUAD[cur.quadrant].c}"></span>
-             <input class="edit steptitle" data-s="${cur.id}" value="${esc(cur.title)}" aria-label="Step title">
-             ${ev?`<span class="st">${fmtDate(ev.dateKey)}${ev.allDay?'':' '+fmtTime(ev.start)}</span>`
-                 :`<span class="st" style="color:var(--warn)">unscheduled</span>`}
-             <button class="btn sm ${GEROW&&GEROW.kind==='sched'&&GEROW.id===cur.id?'primary':''}"
-               data-ge="sched" data-t="${t.id}" data-s="${cur.id}">${ev?'reslot':'slot it'}</button>
-             <button class="btn sm ${GEROW&&GEROW.kind==='foot'&&GEROW.id===cur.id?'primary':''}"
-               data-ge="foot" data-t="${t.id}" data-s="${cur.id}"
-               title="What it really costs: time either side, what has to happen first, money">${
-               hasFootprint(cur)
-                 ? (fp(cur).lead+fp(cur).lag ? '+'+(fp(cur).lead+fp(cur).lag)+'m' : '')
-                   +(fp(cur).costs.length?' '+money(costTotal(fp(cur).costs)):'')
-                   +(fp(cur).prereqs.filter(p=>!p.done).length?' \u00b7 '+fp(cur).prereqs.filter(p=>!p.done).length+' first':'')
-                 : 'footprint'}</button>
-             <button class="btn sm" data-ge="complete" data-t="${t.id}" data-s="${cur.id}">done</button>
-           </div>
-           ${ GEROW&&GEROW.kind==='sched'&&GEROW.id===cur.id ? schedRowHTML(g,t,cur,ev) : '' }
-           ${ GEROW&&GEROW.kind==='foot'&&GEROW.id===cur.id ? footRowHTML(g,t,cur) : '' }
-           ${subListHTML(g,t,cur)}`
-        : `<div class="stepline" style="color:var(--bad)">no next step &mdash; name it below</div>` }
-        ${ t.status!=='dormant' ? `<div class="stepline addrow">
-            ${newInHTML('step','+ next step', `data-t="${t.id}"`)}</div>` : '' }
-      </div>
-      ${ t.status!=='blocked' && t.status!=='dormant'
-        ? (GEROW&&GEROW.kind==='block'&&GEROW.id===t.id
-          ? `<div class="stepline addrow"><span class="muted tiny">Waiting on</span>
-              <input class="blockwho" data-t="${t.id}" placeholder="who or what" aria-label="Waiting on">
-              <button class="btn sm" data-ge="block-cancel">cancel</button>
-              <button class="btn sm primary" data-ge="block-save" data-t="${t.id}">mark blocked</button></div>`
-          : `<div style="margin-top:7px"><button class="btn sm" data-ge="block" data-t="${t.id}">mark blocked</button></div>`)
-        :'' }
-    </div>`;}).join('');
-
-  const typeExtra =
-    g.type==='milestone' ? `<div class="sec"><h4>Backlog</h4>
-        ${g.backlog.length? g.backlog.map((b,i)=>`<div class="stepline">
-          <span class="st">${i+1}</span>
-          <input class="edit backtitle" data-i="${i}" value="${esc(b)}" aria-label="Backlog item ${i+1}">
-          ${ordControls('backlog-up','backlog-down',i,g.backlog.length,'')}
-          <button class="btn sm ghost" data-ge="backlog-del" data-i="${i}">&times;</button></div>`).join('')
-          :'<div class="tiny muted">Empty. Completing a step will ask you to define the next one instead of pulling from here.</div>'}
-        <div class="stepline addrow">${newInHTML('backlog','+ backlog item')}</div></div>`
-  : g.type==='contingent' ? `<div class="sec"><h4>Trigger</h4>
-        <input type="text" id="geTrig" value="${esc(g.trigger)}" placeholder="what activates this goal"></div>`
-  : g.type==='pipeline' ? `<div class="sec"><h4>Stages</h4>
-        <div class="tiny muted">${(g.stages||PIPELINE_STAGES).join(' → ')}</div>
-        <div class="stepline addrow" style="margin-top:8px">${newInHTML('entry','+ pipeline entry (company or contact)')}
-        <span class="tiny muted"> each entry is its own parallel thread with its own stage</span></div></div>`
-  : '';
-
-  const gates = (g.gates||[]).length ? `<div class="sec" style="border-color:#5a4a24">
-      <h4 style="color:var(--warn)">Queued for the next check-in</h4>
-      ${g.gates.map(x=>`<div class="stepline">${esc(x.q)}</div>`).join('')}</div>`:'';
-
-  return `<h3><span class="dot" style="background:${QUAD[bestQuadrant(g)].c}"></span>
-      <span style="flex:1">${esc(shortName(g))}</span>
-      <span class="pill">${spec.label}</span>
-      <button class="btn ghost x" data-close>&times;</button></h3>
-    <div class="mbody" data-goal="${g.id}">
-      <div class="sec"><h4>SMART definition</h4>
-        <label class="fld"><span>Goal</span><input type="text" id="geTitle" value="${esc(g.title)}"></label>
-        <div class="row">
-          <label class="fld"><span>Type</span><select id="geType">${typeSel}</select></label>
-          <label class="fld"><span>Cadence (days)</span><input type="number" id="geCad" value="${cadenceOf(g)}" min="0"></label>
-          <label class="fld"><span>Deadline${g.smart.deadlineSoft?' (soft)':''}</span><input type="date" id="geDL" value="${g.smart.deadline||''}"></label>
-        </div>
-        <label class="fld"><span>Specific outcome</span><input type="text" id="geOut" value="${esc(g.smart.outcome)}" placeholder="what is actually true when this is done"></label>
-        <div class="row">
-          <label class="fld"><span>Metric</span><input type="text" id="geMet" value="${esc(g.smart.metricName)}" placeholder="${esc(spec.metric||'')}"></label>
-          <label class="fld"><span>Current</span><input type="number" id="geCur" value="${g.smart.current||0}"></label>
-          <label class="fld"><span>Target</span><input type="number" id="geTgt" value="${g.smart.target??''}"></label>
-        </div>
-        <div class="tiny muted">${esc(spec.hint)}</div>
-      </div>
-      ${gates}${typeExtra}
-      <div class="sec"><h4>Threads <span class="spacer"></span>
-        <button class="btn sm" data-ge="thread-add">+ thread</button></h4>${threads}</div>
-      <div class="sec"><h4>Follow-through &middot; 28 days</h4>
-        <div class="stat">
-          <div><div class="k">${ft.done}<span class="muted" style="font-size:15px">/${ft.planned}</span></div><div class="kl">done / planned</div></div>
-          <div><div class="k">${streak(g.id)}</div><div class="kl">day streak</div></div>
-          <div><div class="k">${daysQuiet(g.threads[0]||{})}</div><div class="kl">days since movement</div></div>
-        </div><div class="barmini"><i style="width:${ft.rate}%"></i></div></div>
-      <div class="sec"><h4>Context</h4>
-        <label class="fld"><span>Why</span><textarea id="geWhy">${esc(g.why)}</textarea></label>
-        <label class="fld"><span>Notes</span><textarea id="geNotes">${esc(g.notes)}</textarea></label></div>
-    </div>
-    <div class="mfoot">
-      <button class="btn" data-ge="finish">Mark complete</button>
-      <button class="btn danger ${ARMED==='del:'+g.id?'armed':''}" data-ge="del"
-        >${armLabel('del:'+g.id,'Delete','Really delete? Click again')}</button>
-      ${g.type==='decision'?'<button class="btn" data-ge="convert">Convert to goal</button>':''}
-      <span class="spacer"></span>
-      <button class="btn primary" data-ge="save">Save</button></div>`;
-}
 
 export function saveGoalFields(g){
   const q=s=>$(s);

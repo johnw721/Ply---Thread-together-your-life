@@ -921,8 +921,8 @@ explicit redraw entry point.
 **One dialog, one implementation.** `<Modal>` owns the scrim, `role="dialog"`,
 `aria-modal`, the Tab trap and the focus return. Those used to live in three
 places — a template string, a delegated listener on `#modalRoot`, and a module
-variable read by `closeModal()`. The check-in passes a component; the goal editor
-and the smaller dialogs still pass markup. Both land in the same `<Modal>`.
+variable read by `closeModal()`. The check-in and the goal editor pass components;
+the smaller dialogs still pass markup. Both land in the same `<Modal>`.
 
 **One drag engine.** `useDrag` is installed by the view host that owns the
 element the sources live in, and returns a teardown. It stays a single function
@@ -1027,6 +1027,7 @@ src/
   budget.js             the weekly money panel and day capacity
   footprint.js          what a step really costs: templates, prereqs, committed money
   checkin.js/.jsx       the weekly flow: the queue, and the card
+  goal-editor.js/.jsx   the goal editor: the actions (and the other dialogs), and the markup
   views/                day, week, quarter, list (.jsx), and the render host
   components/           card, modal, dialogs, ribbon, resolver, drag
   signals.js            computed reads, and the revision they key off
@@ -1138,7 +1139,8 @@ best statement of what each area is supposed to guarantee.
 | rename | 13 | data written under the old `thread.v1` key adopted on first load, migrated forward, rewritten under `ply.v1`, and the old key left intact as a backup; title, header, error messages and export stamp all renamed |
 | legibility · touch · focus | 43 | every palette colour meeting 4.5:1 computed from the source, `--faint` staying rare, nothing under 10px, the coarse-pointer block resizing each named control, the phone header rules, the focus ring's reach, and the Tab trap wrapping at both ends while leaving the middle alone plus focus returning to the opener |
 | step + subtask drops | 31 | subtask lines being drag sources in the card and the list with a grip, a sub drop scheduling the parent at the dropped time and floating that sub without adding, removing or re-doning anything, both halves undoing as one, week columns scheduling on their own day, a sub dropped on a quadrant re-filing its parent, and the checkbox still being a checkbox rather than a handle |
-| **total** | **751** | |
+| goal editor | 46 | every SMART field shown and read back, blanks keeping or clearing as before, a retype queueing the deadline question and teaching the classifier; a rename committing on change with the dialog's nodes untouched and unsaved typing kept; thread name/relation, backlog rename/delete/reorder with the arrows disabled at the ends; add/remove thread, done pulling from the backlog or asking for the next step, the scheduling row (current slot, all-day, cancel), the block row by Enter and cancel, unblock, a dormant trigger firing, branches, pipeline entries, Escape and Enter in inline fields, Space on a subtask; finish, convert, the follow-through panel; `[src]` only: focus surviving a refresh, and the whole footprint row — lead/lag, prerequisites, cost lines with categories, timing, templates |
+| **total** | **797** | |
 
 What the suites can't tell you: anything about layout, reflow or how it actually
 looks. Every visual claim above was checked by extracting the real markup and CSS and

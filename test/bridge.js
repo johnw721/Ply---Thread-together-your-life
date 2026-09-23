@@ -50,7 +50,7 @@ export const BRIDGE_VALUES = [
   'FOCUSABLE','openModal','closeModal','armConfirm','disarm','repaintArmed','armLabel','openConfirm',
   'newInHTML','newInAct','doCapture','captureHint','wireView','wireDrag',
   'toggleStep','openDefineNext','openEvent','openConvert','openGoal','refreshGoal',
-  'ordControls','schedRowHTML','subListHTML','goalEditorHTML','saveGoalFields','uiAct','geAct','openPrefs',
+  'saveGoalFields','uiAct','geAct','openPrefs',
   // pwa: the service-worker guard, the install hint, and local notifications
   'BUILD','SW_URL','SW_WHY','swBlockedBecause','registerSW',
   'standalone','iosWeb','installHint','renderInstallBar','doInstall','plyGoTo','installPrefsHTML',
@@ -67,7 +67,7 @@ export const BRIDGE_VALUES = [
   'startActual','stopActual','clearActual','actualMins','timing','median','recordSample',
   'tmplGates','clearTmplGate','queueTmplGate','proposeFromDuration','acceptTmplGate','declineTmplGate',
   'MONEY_TARGET','stepById','carryFootprint','togglePrereq','applyFootprint','sigLabel',
-  'committedThisWeek','catSegStyle','footRowHTML','tmplPrefsHTML','parsePrereqSpec','parseCostSpec',
+  'committedThisWeek','catSegStyle','tmplPrefsHTML','parsePrereqSpec','parseCostSpec',
   // reschedule: why each anchor happened, and what the pattern of pushes is evidence of
   'ANCHOR_SOURCES','CHURN_SOURCES','CHURN_AT','churnAt',
   'rescheduleHistory','rescheduleLifetime','blankReschedule','bumpReschedule','noteReschedule',

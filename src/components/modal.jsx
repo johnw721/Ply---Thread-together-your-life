@@ -16,9 +16,9 @@ import { $, el } from '../util.js';
    converter, Settings, the confirm dialog — goes through openModal(), so there
    is nothing to keep in step.
 
-   The body is still passed as markup, because the check-in and the goal editor
-   are still built as strings. That is the remaining half of this step, and it
-   does not change what a dialog IS. */
+   The check-in and the goal editor pass components (openModalNode); the event
+   editor, the converter, define-next, Settings and the confirm dialog still pass
+   markup (openModal). Both land here, and neither changes what a dialog IS. */
 
 export const FOCUSABLE='a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
@@ -76,9 +76,11 @@ export function openModal(html, opts = {}){
   return root.firstElementChild;
 }
 
-/* The same dialog, given a component instead of markup. The check-in uses this;
-   the goal editor and the smaller dialogs are still strings, and both paths land
-   in the same <Modal>, which is the point of having one. */
+/* The same dialog, given a component instead of markup. The check-in and the
+   goal editor use this; the smaller dialogs are still strings, and both paths
+   land in the same <Modal>, which is the point of having one. Calling it again
+   while the same component is open re-renders in place — that is how both of
+   them refresh without losing focus. */
 export function openModalNode(node, opts = {}){
   const root = $('#modalRoot');
   if (!root.innerHTML) setReturnFocus(
